@@ -12,16 +12,26 @@ class RouteController extends Controller
 {
     public function index()
     {
-        // Cache routes and locations for 5 minutes
-        $routes = Cache::remember('routes', 300, function () {
+        // Cache routes and locations for 15 minutes (increased from 5)
+        $routes = Cache::remember('routes', 900, function () {
             return Route::with(['locations' => function ($query) {
-                $query->select('id', 'name', 'address', 'latitude', 'longitude', 'person_capacity')
-                    ->orderBy('order');
+                $query->select('locations.id', 'locations.name', 'locations.address', 'locations.latitude', 'locations.longitude', 'locations.person_capacity')
+                    ->orderBy('route_location.order');
             }])->get();
         });
 
-        $locations = Cache::remember('locations', 300, function () {
-            return Location::select('id', 'name', 'address', 'latitude', 'longitude', 'person_capacity')
+        // Only load locations if they're not already in the routes
+        $locations = Cache::remember('available_locations', 900, function () use ($routes) {
+            // Get all location IDs that are already in routes
+            $usedLocationIds = collect();
+            foreach ($routes as $route) {
+                $usedLocationIds = $usedLocationIds->merge($route->locations->pluck('id'));
+            }
+            $usedLocationIds = $usedLocationIds->unique();
+            
+            // Only get locations that aren't in any route
+            return Location::whereNotIn('id', $usedLocationIds)
+                ->select('id', 'name', 'address', 'latitude', 'longitude', 'person_capacity')
                 ->get();
         });
 
@@ -100,104 +110,135 @@ class RouteController extends Controller
 
     public function generateRoutes(Request $request)
     {
-        $request->validate([
-            'num_routes' => 'required|integer|min:1',
-            'route_capacity' => 'required|integer|min:1'
-        ]);
-
-        DB::beginTransaction();
         try {
-            // Get all locations except Overrijssel with optimized query
-            $locations = Cache::remember('locations.except.overrijssel', 300, function () {
-                return Location::where('name', '!=', 'Overrijssel')
-                    ->select('id', 'name', 'person_capacity')
-                    ->get();
-            });
+            $validated = $request->validate([
+                'num_routes' => 'required|integer|min:1',
+                'route_capacity' => 'required|integer|min:1'
+            ]);
+
+            DB::beginTransaction();
+
+            // Get all locations except Overrijssel
+            $locations = Location::where('name', '!=', 'Overrijssel')
+                ->get(['id', 'name', 'latitude', 'longitude', 'person_capacity'])
+                ->toArray();
+
+            // Ensure Overrijssel exists
+            $overrijssel = Location::firstOrCreate(
+                ['name' => 'Overrijssel'],
+                [
+                    'street' => 'Overrijssel',
+                    'house_number' => '1',
+                    'city' => 'Overrijssel',
+                    'postal_code' => '8000',
+                    'address' => 'Overrijssel, Netherlands',
+                    'latitude' => 52.4383,
+                    'longitude' => 6.4405,
+                    'person_capacity' => 2
+                ]
+            );
+
+            // Calculate total persons needed
+            $totalPersons = array_sum(array_column($locations, 'person_capacity'));
             
-            // Check if Overrijssel exists, if not create it
-            $overrijssel = Cache::remember('location.overrijssel', 300, function () {
-                return Location::firstOrCreate(
-                    ['name' => 'Overrijssel'],
-                    [
-                        'address' => 'Overrijssel, Netherlands',
-                        'latitude' => 52.4383,
-                        'longitude' => 6.4405,
-                        'person_capacity' => 2
-                    ]
-                );
-            });
-            
-            // Calculate total persons needed for all locations
-            $totalPersons = $locations->sum('person_capacity');
-            $personsPerRoute = $request->route_capacity;
-            $requestedRoutes = $request->num_routes;
-            
-            // Calculate minimum number of routes needed based on total persons
-            $minRoutesNeeded = ceil($totalPersons / $personsPerRoute);
-            $numberOfRoutes = max($requestedRoutes, $minRoutesNeeded);
-            
-            // Delete existing routes
+            // Calculate minimum number of routes needed
+            $minRoutes = ceil($totalPersons / $validated['route_capacity']);
+            $numRoutes = max($minRoutes, $validated['num_routes']);
+
+            // Clear existing routes
+            DB::table('route_location')->truncate();
             Route::truncate();
-            
-            // Create new routes in batches
+
+            // Create new routes
             $routes = [];
-            $routeLocations = [];
-            $currentLocationIndex = 0;
-            $currentPersonCount = 0;
-            
-            for ($i = 0; $i < $numberOfRoutes; $i++) {
-                $routes[] = [
-                    'name' => 'Route ' . ($i + 1),
-                    'description' => 'Automatically generated route ' . ($i + 1),
-                    'person_capacity' => $personsPerRoute,
-                    'created_at' => now(),
-                    'updated_at' => now()
-                ];
+            for ($i = 1; $i <= $numRoutes; $i++) {
+                $routes[] = Route::create([
+                    'name' => "Route $i",
+                    'capacity' => $validated['route_capacity']
+                ]);
             }
-            
-            // Insert routes in bulk
-            Route::insert($routes);
-            
-            // Get the created routes
-            $createdRoutes = Route::all();
-            
-            // Prepare route locations data
-            foreach ($createdRoutes as $route) {
-                $routeLocations[] = [
-                    'route_id' => $route->id,
-                    'location_id' => $overrijssel->id,
-                    'order' => 0,
-                    'created_at' => now(),
-                    'updated_at' => now()
-                ];
-                
+
+            // Distribute locations across routes using nearest neighbor algorithm
+            $currentRouteIndex = 0;
+            $currentRouteCapacity = 0;
+            $visited = [];
+            $currentLocation = $overrijssel;
+
+            while (count($visited) < count($locations)) {
+                $nearest = null;
+                $minDistance = PHP_FLOAT_MAX;
+
                 foreach ($locations as $index => $location) {
-                    $routeLocations[] = [
-                        'route_id' => $route->id,
-                        'location_id' => $location->id,
-                        'order' => $index + 1,
-                        'created_at' => now(),
-                        'updated_at' => now()
-                    ];
+                    if (in_array($index, $visited)) continue;
+
+                    $distance = $this->calculateDistance(
+                        $currentLocation['latitude'],
+                        $currentLocation['longitude'],
+                        $location['latitude'],
+                        $location['longitude']
+                    );
+
+                    if ($distance < $minDistance) {
+                        $minDistance = $distance;
+                        $nearest = $index;
+                    }
                 }
+
+                if ($nearest === null) break;
+
+                $location = $locations[$nearest];
+                $locationCapacity = $location['person_capacity'];
+
+                if ($currentRouteCapacity + $locationCapacity > $validated['route_capacity']) {
+                    $currentRouteIndex++;
+                    $currentRouteCapacity = 0;
+                    $currentLocation = $overrijssel;
+
+                    if ($currentRouteIndex >= count($routes)) {
+                        break;
+                    }
+                }
+
+                $routes[$currentRouteIndex]->locations()->attach($location['id'], [
+                    'order' => count($visited) + 1
+                ]);
+
+                $currentRouteCapacity += $locationCapacity;
+                $visited[] = $nearest;
+                $currentLocation = (object)$location;
             }
-            
-            // Insert route locations in bulk
-            DB::table('location_route')->insert($routeLocations);
-            
+
             DB::commit();
-            
-            // Clear all relevant caches
+
+            // Clear route cache
             Cache::forget('routes');
-            Cache::forget('locations');
-            Cache::forget('locations.except.overrijssel');
-            
+
             return redirect()->route('routes.index')
-                ->with('success', 'Routes generated successfully.');
+                ->with('success', 'Routes generated successfully!');
+
         } catch (\Exception $e) {
             DB::rollBack();
-            return redirect()->back()
+            return redirect()->route('routes.index')
                 ->with('error', 'Error generating routes: ' . $e->getMessage());
         }
+    }
+    
+    /**
+     * Calculate the distance between two points using the Haversine formula
+     */
+    private function calculateDistance($lat1, $lon1, $lat2, $lon2)
+    {
+        $earthRadius = 6371; // Radius of the earth in km
+        
+        $latDelta = deg2rad($lat2 - $lat1);
+        $lonDelta = deg2rad($lon2 - $lon1);
+        
+        $a = sin($latDelta/2) * sin($latDelta/2) +
+            cos(deg2rad($lat1)) * cos(deg2rad($lat2)) *
+            sin($lonDelta/2) * sin($lonDelta/2);
+            
+        $c = 2 * atan2(sqrt($a), sqrt(1-$a));
+        
+        return $earthRadius * $c; // Distance in km
     }
 } 

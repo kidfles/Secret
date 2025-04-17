@@ -8,4 +8,32 @@ export default defineConfig({
             refresh: true,
         }),
     ],
+    build: {
+        manifest: true,
+        rollupOptions: {
+            output: {
+                manualChunks: {
+                    vendor: ['leaflet'],
+                },
+            },
+        },
+        chunkSizeWarningLimit: 1000,
+        cssCodeSplit: true,
+        sourcemap: false,
+        minify: 'terser',
+        terserOptions: {
+            compress: {
+                drop_console: true,
+                drop_debugger: true,
+            },
+        },
+    },
+    server: {
+        hmr: {
+            host: 'localhost',
+        },
+    },
+    optimizeDeps: {
+        include: ['leaflet'],
+    },
 }); 

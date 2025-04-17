@@ -66,7 +66,18 @@ class RouteOptimizerController extends Controller
      */
     public function destroy(Location $location)
     {
-        $location->delete();
-        return redirect()->route('route-optimizer.index')->with('success', 'Location deleted successfully');
+        try {
+            // First, remove any route associations
+            $location->routes()->detach();
+            
+            // Then delete the location
+            $location->delete();
+            
+            return redirect()->route('route-optimizer.index')
+                ->with('success', 'Locatie succesvol verwijderd');
+        } catch (\Exception $e) {
+            return redirect()->route('route-optimizer.index')
+                ->with('error', 'Er is een fout opgetreden bij het verwijderen van de locatie: ' . $e->getMessage());
+        }
     }
 }

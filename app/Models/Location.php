@@ -14,7 +14,8 @@ class Location extends Model
         'postal_code',
         'latitude',
         'longitude',
-        'person_capacity'
+        'person_capacity',
+        'address'
     ];
 
     public static $rules = [
@@ -25,12 +26,13 @@ class Location extends Model
         'postal_code' => 'nullable|string|max:10',
         'latitude' => 'required|numeric|between:-90,90',
         'longitude' => 'required|numeric|between:-180,180',
-        'person_capacity' => 'required|integer|min:1'
+        'person_capacity' => 'required|integer|min:1',
+        'address' => 'required|string|max:255'
     ];
 
     public function routes()
     {
-        return $this->belongsToMany(Route::class)
+        return $this->belongsToMany(Route::class, 'route_location')
             ->withPivot('order')
             ->orderBy('route_location.order');
     }

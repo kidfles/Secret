@@ -14,7 +14,7 @@ class Route extends Model
 
     public function locations()
     {
-        return $this->belongsToMany(Location::class)
+        return $this->belongsToMany(Location::class, 'route_location')
             ->withPivot('order')
             ->orderBy('route_location.order');
     }
