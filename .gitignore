@@ -1,0 +1,72 @@
+# Laravel specific
+/node_modules
+/public/hot
+/public/storage
+/storage/*.key
+/vendor
+.env
+.env.backup
+.env.production
+.phpunit.result.cache
+Homestead.json
+Homestead.yaml
+auth.json
+npm-debug.log
+yarn-error.log
+/.fleet
+/.idea
+/.vscode
+
+# Docker specific
+/docker/mysql/data
+.docker-compose.override.yml
+
+# OS specific
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# IDE specific
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Testing
+/coverage
+.phpunit.cache
+
+# Dependencies
+/vendor
+/node_modules
+package-lock.json
+yarn.lock
+
+# Build files
+/public/build
+/public/css
+/public/js
+/public/mix-manifest.json
+
+# Storage
+/storage/framework/cache/*
+/storage/framework/sessions/*
+/storage/framework/views/*
+/storage/logs/*
+/storage/app/public/*
+!/storage/framework/cache/.gitkeep
+!/storage/framework/sessions/.gitkeep
+!/storage/framework/views/.gitkeep
+!/storage/logs/.gitkeep
+!/storage/app/public/.gitkeep
+
+# Database
+*.sqlite
+*.sqlite-journal
