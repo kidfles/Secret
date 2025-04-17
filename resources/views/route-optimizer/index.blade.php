@@ -3,48 +3,48 @@
 @section('content')
 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
     <div class="bg-white shadow-sm rounded-lg p-6">
-        <div class="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-md">
-            <p class="text-sm text-blue-700">
-                <strong>Note:</strong> All routes will start from Overrijssel, Netherlands. You don't need to add this location manually.
+        <div class="mb-4 p-4 bg-red-50 border border-red-200 rounded-md">
+            <p class="text-sm text-red-700">
+                <strong>Opmerking:</strong> Alle routes beginnen in Overrijssel, Nederland. U hoeft deze locatie niet handmatig toe te voegen.
             </p>
         </div>
         
-        <h2 class="text-lg font-semibold mb-4">Add Location</h2>
+        <h2 class="text-lg font-semibold mb-4">Locatie Toevoegen</h2>
         <form action="{{ route('route-optimizer.store') }}" method="POST" id="locationForm">
             @csrf
             <div class="space-y-4">
                 <div>
-                    <label for="name" class="block text-sm font-medium text-gray-700">Location Name</label>
-                    <input type="text" name="name" id="name" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500" required>
+                    <label for="name" class="block text-sm font-medium text-gray-700">Locatienaam</label>
+                    <input type="text" name="name" id="name" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500" required>
                 </div>
 
                 <div>
-                    <label for="full_address" class="block text-sm font-medium text-gray-700">Full Address</label>
-                    <input type="text" id="full_address" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500" placeholder="Enter full address (e.g., Hoofdstraat 123, Amsterdam)" required>
-                    <p class="mt-1 text-sm text-gray-500">Enter the complete address and we'll parse it for you</p>
+                    <label for="full_address" class="block text-sm font-medium text-gray-700">Volledig Adres</label>
+                    <input type="text" id="full_address" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500" placeholder="Voer volledig adres in (bijv. Hoofdstraat 123, Amsterdam)" required>
+                    <p class="mt-1 text-sm text-gray-500">Voer het volledige adres in en wij vullen het voor u in</p>
                 </div>
 
                 <div class="grid grid-cols-2 gap-4">
                     <div>
-                        <label for="street" class="block text-sm font-medium text-gray-700">Street Name</label>
-                        <input type="text" name="street" id="street" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500" readonly>
+                        <label for="street" class="block text-sm font-medium text-gray-700">Straatnaam</label>
+                        <input type="text" name="street" id="street" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500" readonly>
                     </div>
 
                     <div>
-                        <label for="house_number" class="block text-sm font-medium text-gray-700">House Number</label>
-                        <input type="text" name="house_number" id="house_number" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500" readonly>
+                        <label for="house_number" class="block text-sm font-medium text-gray-700">Huisnummer</label>
+                        <input type="text" name="house_number" id="house_number" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500" readonly>
                     </div>
                 </div>
 
                 <div>
-                    <label for="city" class="block text-sm font-medium text-gray-700">City</label>
-                    <input type="text" name="city" id="city" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500" readonly>
+                    <label for="city" class="block text-sm font-medium text-gray-700">Stad</label>
+                    <input type="text" name="city" id="city" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500" readonly>
                 </div>
 
                 <div>
-                    <label for="person_capacity" class="block text-sm font-medium text-gray-700">Number of Persons</label>
-                    <input type="number" name="person_capacity" id="person_capacity" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500" value="2" min="1">
-                    <p class="mt-1 text-sm text-gray-500">Default is 2 persons per location</p>
+                    <label for="person_capacity" class="block text-sm font-medium text-gray-700">Aantal Personen</label>
+                    <input type="number" name="person_capacity" id="person_capacity" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500" value="2" min="1">
+                    <p class="mt-1 text-sm text-gray-500">Standaard is 2 personen per locatie</p>
                 </div>
 
                 <!-- Hidden fields for coordinates -->
@@ -52,14 +52,14 @@
                 <input type="hidden" name="longitude" id="longitude">
                 <input type="hidden" name="address" id="address">
 
-                <button type="submit" class="w-full bg-indigo-600 text-white py-2 px-4 rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2">
-                    Add Location
+                <button type="submit" class="w-full bg-red-600 text-white py-2 px-4 rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2">
+                    Locatie Toevoegen
                 </button>
             </div>
         </form>
 
         <div class="mt-8">
-            <h2 class="text-lg font-semibold mb-4">Your Locations</h2>
+            <h2 class="text-lg font-semibold mb-4">Uw Locaties</h2>
             <div class="space-y-4">
                 @forelse($locations as $location)
                     <div class="border rounded-lg p-4 hover:bg-gray-50 transition-colors duration-200">
@@ -67,19 +67,19 @@
                             <div>
                                 <h3 class="font-medium text-lg">{{ $location->name }}</h3>
                                 <p class="text-sm text-gray-600">{{ $location->address }}</p>
-                                <p class="text-sm text-gray-500 mt-1">Capacity: {{ $location->person_capacity }} persons</p>
+                                <p class="text-sm text-gray-500 mt-1">Capaciteit: {{ $location->person_capacity }} personen</p>
                             </div>
                             <form action="{{ route('route-optimizer.destroy', $location) }}" method="POST">
                                 @csrf
                                 @method('DELETE')
                                 <button type="submit" class="text-red-600 hover:text-red-800">
-                                    Delete
+                                    Verwijderen
                                 </button>
                             </form>
                         </div>
                     </div>
                 @empty
-                    <p class="text-gray-500 text-center py-4">No locations added yet.</p>
+                    <p class="text-gray-500 text-center py-4">Nog geen locaties toegevoegd.</p>
                 @endforelse
             </div>
         </div>
@@ -109,7 +109,7 @@
                     <div class="p-2">
                         <h3 class="font-medium">${location.name}</h3>
                         <p class="text-sm">${location.address}</p>
-                        <p class="text-sm text-gray-500 mt-1">Capacity: ${location.person_capacity} persons</p>
+                        <p class="text-sm text-gray-500 mt-1">Capaciteit: ${location.person_capacity} personen</p>
                     </div>
                 `)
                 .addTo(map);
@@ -157,11 +157,11 @@
                     document.getElementById('house_number').value = '';
                 }
             } else {
-                alert('Address not found. Please check the address and try again.');
+                alert('Adres niet gevonden. Controleer het adres en probeer het opnieuw.');
             }
         } catch (error) {
             console.error('Error:', error);
-            alert('Error looking up address. Please try again.');
+            alert('Fout bij het opzoeken van het adres. Probeer het opnieuw.');
         }
     });
 
@@ -173,7 +173,7 @@
         if (!document.getElementById('latitude').value) {
             const fullAddress = document.getElementById('full_address').value;
             if (!fullAddress) {
-                alert('Please enter a valid address');
+                alert('Voer een geldig adres in');
                 return;
             }
             
@@ -209,11 +209,11 @@
                     // Submit the form
                     this.submit();
                 } else {
-                    alert('Address not found. Please check the address and try again.');
+                    alert('Adres niet gevonden. Controleer het adres en probeer het opnieuw.');
                 }
             } catch (error) {
                 console.error('Error:', error);
-                alert('Error looking up address. Please try again.');
+                alert('Fout bij het opzoeken van het adres. Probeer het opnieuw.');
             }
         } else {
             // If we already have the coordinates, just submit the form
