@@ -47,8 +47,9 @@ RUN chown -R www-data:www-data /var/www \
 COPY docker/entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
-# Expose port 9000
-EXPOSE 9000
+# Disable / remove Xdebug
+RUN pecl uninstall xdebug || true \
+ && docker-php-ext-disable xdebug || true
 
-# Set entrypoint
-ENTRYPOINT ["entrypoint.sh"] 
+EXPOSE 9000
+ENTRYPOINT ["entrypoint.sh"]

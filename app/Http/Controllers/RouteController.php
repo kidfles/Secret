@@ -5,22 +5,167 @@ namespace App\Http\Controllers;
 use App\Models\Route;
 use App\Models\Location;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 
 class RouteController extends Controller
 {
-    private const CACHE_TTL = 900; // 15 minutes
+    private const CACHE_TTL = 900;
     private const CACHE_KEY = 'routes';
 
     public function index()
     {
-        $routes = Route::with(['locations' => function ($query) {
-            $query->orderBy('route_location.order');
+        $routes = Route::with(['locations' => function ($q) {
+            $q->orderBy('route_location.order');
         }])->get();
 
-        return view('routes.index', compact('routes'));
+        // palette for up to 10 routes
+        $routeColors = [
+            '#FF0000','#00FF00','#0000FF','#FFA500','#800080',
+            '#008080','#FFFF00','#FF00FF','#00FFFF','#A52A2A'
+        ];
+
+        return view('routes.index', compact('routes','routeColors'));
+    }
+
+    public function generate(Request $request)
+    {
+        $request->validate([
+            'num_routes' => 'required|integer|min:1'
+        ]);
+        $numRoutes = $request->input('num_routes');
+    
+        // Hardcoded starting location
+        $startLocation = (object) [
+            'id'        => 0,
+            'name'      => 'Broekstraat 68',
+            'latitude'  => 51.8372,
+            'longitude' => 5.6697,
+            'address'   => 'Broekstraat 68, Nederasselt',
+        ];
+    
+        // Fetch *only* real locations from DB
+        $locations = Location::all();
+    
+        if ($locations->isEmpty()) {
+            return redirect()->back()->with('error', 'No locations available to generate routes.');
+        }
+    
+        try {
+            DB::beginTransaction();
+    
+            // Wipe old
+            DB::table('route_location')->delete();
+            Route::truncate();
+    
+            // Build a separate collection for distance matrix
+            $allPoints = $locations->concat([$startLocation]);
+            $distances = $this->calculateDistanceMatrix($allPoints);
+    
+            // Prepare unassigned REAL locations
+            $unassigned = $locations->pluck('id')->toArray();
+            $locationsPerRoute = ceil(count($unassigned) / $numRoutes);
+            $createdRoutes = [];
+    
+            for ($i = 0; $i < $numRoutes && $unassigned; $i++) {
+                $route = Route::create(['name' => 'Route ' . ($i + 1)]);
+                $sequence = [$startLocation->id];
+    
+                // Nearest‐neighbor on the REAL unassigned list
+                while (
+                    count($sequence) < min($locationsPerRoute + 1, count($unassigned) + 1)
+                    && !empty($unassigned)
+                ) {
+                    $currentId = end($sequence);
+                    $nextId = $this->findNearestLocation($currentId, $unassigned, $distances);
+                    if ($nextId === null) break;
+    
+                    $sequence[] = $nextId;
+                    unset($unassigned[array_search($nextId, $unassigned)]);
+                }
+    
+                // 2‐Opt improvement
+                $sequence = $this->twoOptImprovement($sequence, $distances);
+    
+                // Attach (skip the startLocation->id=0)
+                foreach ($sequence as $order => $locId) {
+                    if ($locId === $startLocation->id) {
+                        continue;
+                    }
+                    $route->locations()->attach($locId, ['order' => $order]);
+                }
+    
+                $createdRoutes[] = $route;
+            }
+    
+            // Distribute any leftovers
+            foreach ($unassigned as $locId) {
+                $least = collect($createdRoutes)
+                    ->sortBy(fn($r) => $r->locations()->count())
+                    ->first();
+    
+                $least->locations()->attach($locId, [
+                    'order' => $least->locations()->count() + 1,
+                ]);
+            }
+    
+            DB::commit();
+            return redirect()->route('routes.index')
+                             ->with('success', 'Routes generated successfully.');
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return redirect()->back()
+                             ->with('error', 'Error generating routes: ' . $e->getMessage());
+        }
+    }
+    
+
+    public function update(Request $request, Route $route)
+    {
+        $request->validate([
+            'locations'=>'required|array',
+            'locations.*'=>'exists:locations,id'
+        ]);
+        foreach ($request->locations as $i=>$lId) {
+            $route->locations()->updateExistingPivot($lId,['order'=>$i+1]);
+        }
+        return response()->json(['message'=>'Order updated']);
+    }
+
+    public function moveLocation(Request $request)
+    {
+        $request->validate([
+            'location_id'=>'required|exists:locations,id',
+            'target_route_id'=>'required|exists:routes,id',
+        ]);
+        try {
+            DB::beginTransaction();
+            $loc  = Location::findOrFail($request->location_id);
+            $to   = Route::findOrFail($request->target_route_id);
+            $from = Route::whereHas('locations',fn($q)=>$q->where('location_id',$loc->id))->firstOrFail();
+            $from->locations()->detach($loc->id);
+            $to->locations()->attach($loc->id,['order'=>$to->locations()->count()+1]);
+            DB::commit();
+            return response()->json(['success'=>true]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json(['success'=>false,'message'=>$e->getMessage()],422);
+        }
+    }
+
+    public function recalculateRoute(Request $request)
+    {
+        $request->validate(['route_id'=>'required|exists:routes,id']);
+        try {
+            DB::beginTransaction();
+            $route = Route::findOrFail($request->route_id);
+            $this->optimizeRoute($route);
+            DB::commit();
+            return response()->json(['success'=>true]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json(['success'=>false,'message'=>$e->getMessage()],422);
+        }
     }
 
     public function destroy(Route $route)
@@ -29,200 +174,90 @@ class RouteController extends Controller
         try {
             $route->delete();
             DB::commit();
-            
             Cache::forget(self::CACHE_KEY);
-            
-            return redirect()->route('routes.index')
-                ->with('success', 'Route deleted successfully.');
+            return redirect()->route('routes.index')->with('success','Route deleted.');
         } catch (\Exception $e) {
             DB::rollBack();
-            return redirect()->back()
-                ->with('error', 'Error deleting route: ' . $e->getMessage());
+            return back()->with('error','Error deleting: '.$e->getMessage());
         }
     }
 
-    public function generate(Request $request)
+    public function deleteAll()
     {
-        $request->validate([
-            'num_routes' => 'required|integer|min:1'
-        ]);
-
-        $numRoutes = $request->input('num_routes');
-        
-        // Hardcoded starting location (Broekstraat 68, Nederasselt)
-        $startLocation = new \stdClass();
-        $startLocation->id = 0; // Use a special ID for the starting location
-        $startLocation->name = 'Broekstraat 68';
-        $startLocation->latitude = 51.8372; // Approximate coordinates for Nederasselt
-        $startLocation->longitude = 5.6697;
-        $startLocation->address = 'Broekstraat 68, Nederasselt';
-
-        // Get all locations
-        $locations = Location::all();
-
-        if ($locations->isEmpty()) {
-            return redirect()->back()->with('error', 'No locations available to generate routes.');
-        }
-
         try {
             DB::beginTransaction();
-            
-            // Delete existing routes and their relationships
             DB::table('route_location')->delete();
             Route::truncate();
-
-            // Calculate distances between all locations
-            $distances = $this->calculateDistanceMatrix($locations->push($startLocation));
-
-            // Calculate locations per route (excluding the start location)
-            $locationsPerRoute = ceil($locations->count() / $numRoutes);
-            $unassignedLocations = $locations->pluck('id')->toArray();
-            $routes = [];
-
-            // Generate optimized routes
-            for ($i = 0; $i < $numRoutes && !empty($unassignedLocations); $i++) {
-                // Create route in database
-                $route = Route::create([
-                    'name' => 'Route ' . ($i + 1)
-                ]);
-
-                // Always start with Broekstraat 68
-                $routeLocations = [$startLocation->id];
-
-                // Build route using nearest neighbor with 2-opt improvement
-                $targetSize = min($locationsPerRoute + 1, count($unassignedLocations) + 1); // +1 for start location
-                while (count($routeLocations) < $targetSize && !empty($unassignedLocations)) {
-                    $currentLocationId = end($routeLocations);
-                    $nearestLocationId = $this->findNearestLocation($currentLocationId, $unassignedLocations, $distances);
-                    
-                    if ($nearestLocationId === null) break;
-                    
-                    $routeLocations[] = $nearestLocationId;
-                    unset($unassignedLocations[array_search($nearestLocationId, $unassignedLocations)]);
-                }
-
-                // Apply 2-opt improvement
-                $routeLocations = $this->twoOptImprovement($routeLocations, $distances);
-
-                // Attach locations in optimized order
-                foreach ($routeLocations as $order => $locationId) {
-                    // Skip the hardcoded starting location
-                    if ($locationId === $startLocation->id) continue;
-                    
-                    $route->locations()->attach($locationId, ['order' => $order]);
-                }
-
-                $routes[] = $route;
-            }
-
-            // If there are still unassigned locations, distribute them to the routes
-            if (!empty($unassignedLocations)) {
-                foreach ($unassignedLocations as $locationId) {
-                    // Find the route with the least locations
-                    $targetRoute = collect($routes)->sortBy(function($route) {
-                        return $route->locations()->count();
-                    })->first();
-
-                    // Add location to the route
-                    $targetRoute->locations()->attach($locationId, [
-                        'order' => $targetRoute->locations()->count() + 1
-                    ]);
-                }
-            }
-
             DB::commit();
-            return redirect()->route('routes.index')->with('success', 'Routes generated successfully.');
+            return redirect()->route('routes.index')->with('success','Alle routes verwijderd.');
         } catch (\Exception $e) {
             DB::rollBack();
-            return redirect()->back()->with('error', 'Error generating routes: ' . $e->getMessage());
+            return back()->with('error','Fout verwijderen: '.$e->getMessage());
         }
     }
 
-    private function calculateDistanceMatrix($locations)
+    // ————————————————————————————————————
+    //  Distance / Optimization helpers below
+    // ————————————————————————————————————
+
+    private function calculateDistanceMatrix($points)
     {
-        $distances = [];
-        foreach ($locations as $i => $loc1) {
-            foreach ($locations as $j => $loc2) {
+        $d = [];
+        foreach ($points as $i => $a) {
+            foreach ($points as $j => $b) {
                 if ($i !== $j) {
-                    $distances[$loc1->id][$loc2->id] = $this->calculateDistance(
-                        $loc1->latitude,
-                        $loc1->longitude,
-                        $loc2->latitude,
-                        $loc2->longitude
+                    $d[$a->id][$b->id] = $this->calculateDistance(
+                        $a->latitude, $a->longitude,
+                        $b->latitude, $b->longitude
                     );
                 }
             }
         }
-        return $distances;
+        return $d;
     }
 
     private function calculateDistance($lat1, $lon1, $lat2, $lon2)
     {
-        $earthRadius = 6371; // Earth's radius in kilometers
+        $R = 6371; // km
+        $φ1 = deg2rad($lat1);
+        $φ2 = deg2rad($lat2);
+        $Δφ = deg2rad($lat2 - $lat1);
+        $Δλ = deg2rad($lon2 - $lon1);
 
-        $lat1 = deg2rad($lat1);
-        $lon1 = deg2rad($lon1);
-        $lat2 = deg2rad($lat2);
-        $lon2 = deg2rad($lon2);
-
-        $dlat = $lat2 - $lat1;
-        $dlon = $lon2 - $lon1;
-
-        $a = sin($dlat/2) * sin($dlat/2) + cos($lat1) * cos($lat2) * sin($dlon/2) * sin($dlon/2);
-        $c = 2 * atan2(sqrt($a), sqrt(1-$a));
-        
-        return $earthRadius * $c;
+        $a = sin($Δφ/2)**2 + cos($φ1)*cos($φ2)*sin($Δλ/2)**2;
+        $c = 2 * atan2(sqrt($a), sqrt(1 - $a));
+        return $R * $c;
     }
 
-    private function findNearestLocation($currentLocationId, $unassignedLocations, $distances)
+    private function findNearestLocation($currentId, $unassigned, $distances)
     {
-        $minDistance = PHP_FLOAT_MAX;
-        $nearestLocationId = null;
-
-        foreach ($unassignedLocations as $locationId) {
-            if (isset($distances[$currentLocationId][$locationId])) {
-                $distance = $distances[$currentLocationId][$locationId];
-                if ($distance < $minDistance) {
-                    $minDistance = $distance;
-                    $nearestLocationId = $locationId;
-                }
+        $best = null;
+        $min  = PHP_FLOAT_MAX;
+        foreach ($unassigned as $locId) {
+            if (isset($distances[$currentId][$locId]) && $distances[$currentId][$locId] < $min) {
+                $min  = $distances[$currentId][$locId];
+                $best = $locId;
             }
         }
-
-        return $nearestLocationId;
+        return $best;
     }
 
-    private function twoOptImprovement($route, $distances)
+    private function twoOptImprovement(array $route, array $distances)
     {
-        if (count($route) <= 2) {
-            return $route; // No improvement possible for routes with 2 or fewer locations
-        }
-
         $improved = true;
-        $bestDistance = $this->calculateRouteDistance($route, $distances);
+        $best    = $this->calculateRouteDistance($route, $distances);
 
         while ($improved) {
             $improved = false;
-            $bestDelta = 0;
-            $bestI = -1;
-            $bestJ = -1;
-
-            // Try all possible 2-opt moves
             for ($i = 0; $i < count($route) - 2; $i++) {
                 for ($j = $i + 2; $j < count($route); $j++) {
                     $delta = $this->calculateTwoOptDelta($route, $i, $j, $distances);
-                    if ($delta < $bestDelta) {
-                        $bestDelta = $delta;
-                        $bestI = $i;
-                        $bestJ = $j;
+                    if ($delta < 0) {
+                        $this->reverseRouteSegment($route, $i+1, $j);
+                        $best     += $delta;
+                        $improved = true;
                     }
                 }
-            }
-
-            // If we found an improvement, apply it
-            if ($bestDelta < 0) {
-                $this->reverseRouteSegment($route, $bestI + 1, $bestJ);
-                $improved = true;
             }
         }
 
@@ -231,218 +266,62 @@ class RouteController extends Controller
 
     private function calculateRouteDistance($route, $distances)
     {
-        $totalDistance = 0;
+        $sum = 0;
         for ($i = 0; $i < count($route) - 1; $i++) {
-            if (isset($distances[$route[$i]][$route[$i + 1]])) {
-                $totalDistance += $distances[$route[$i]][$route[$i + 1]];
-            }
+            $sum += $distances[$route[$i]][$route[$i+1]] ?? 0;
         }
-        return $totalDistance;
+        return $sum;
     }
 
     private function calculateTwoOptDelta($route, $i, $j, $distances)
     {
-        if (!isset($distances[$route[$i]][$route[$i + 1]]) || 
-            !isset($distances[$route[$j - 1]][$route[$j]]) ||
-            !isset($distances[$route[$i]][$route[$j - 1]]) ||
-            !isset($distances[$route[$i + 1]][$route[$j]])) {
-            return 0;
-        }
-
-        $oldDistance = $distances[$route[$i]][$route[$i + 1]] + $distances[$route[$j - 1]][$route[$j]];
-        $newDistance = $distances[$route[$i]][$route[$j - 1]] + $distances[$route[$i + 1]][$route[$j]];
-        return $newDistance - $oldDistance;
+        // remove edges (i→i+1) and (j-1→j), add (i→j-1) and (i+1→j)
+        $a = $route[$i];
+        $b = $route[$i+1];
+        $c = $route[$j-1];
+        $d = $route[$j];
+        $old = ($distances[$a][$b] ?? 0) + ($distances[$c][$d] ?? 0);
+        $new = ($distances[$a][$c] ?? 0) + ($distances[$b][$d] ?? 0);
+        return $new - $old;
     }
 
-    private function reverseRouteSegment(&$route, $start, $end)
+    private function reverseRouteSegment(array &$route, int $start, int $end)
     {
-        if ($start >= $end || $start < 0 || $end >= count($route)) {
-            return;
-        }
-
         while ($start < $end) {
-            $temp = $route[$start];
-            $route[$start] = $route[$end];
-            $route[$end] = $temp;
+            [$route[$start], $route[$end]] = [$route[$end], $route[$start]];
             $start++;
             $end--;
         }
     }
 
-    public function update(Request $request, Route $route)
-    {
-        $request->validate([
-            'locations' => 'required|array',
-            'locations.*' => 'exists:locations,id'
-        ]);
-
-        // Update the order of locations in the route
-        foreach ($request->locations as $index => $locationId) {
-            $route->locations()->updateExistingPivot($locationId, ['order' => $index + 1]);
-        }
-
-        return response()->json(['message' => 'Route updated successfully']);
-    }
-
-    private function preCalculateDistances(Collection $locations, $overrijssel): array
-    {
-        $distances = [];
-        foreach ($locations as $index => $location) {
-            $distances[$index] = $this->calculateDistance(
-                $overrijssel->latitude,
-                $overrijssel->longitude,
-                $location['latitude'],
-                $location['longitude']
-            );
-        }
-        return $distances;
-    }
-
-    /**
-     * Move a location from one route to another.
-     */
-    public function moveLocation(Request $request)
-    {
-        $request->validate([
-            'location_id' => 'required|exists:locations,id',
-            'source_route_id' => 'required|exists:routes,id',
-            'target_route_id' => 'required|exists:routes,id',
-        ]);
-
-        try {
-            DB::beginTransaction();
-
-            $location = Location::findOrFail($request->location_id);
-            $sourceRoute = Route::findOrFail($request->source_route_id);
-            $targetRoute = Route::findOrFail($request->target_route_id);
-
-            // Check if the location is in the source route
-            if (!$sourceRoute->locations()->where('location_id', $location->id)->exists()) {
-                throw new \Exception('De locatie bevindt zich niet in de bronroute.');
-            }
-
-            // Remove the location from the source route
-            $sourceRoute->locations()->detach($location->id);
-
-            // Add the location to the target route
-            $targetRoute->locations()->attach($location->id, ['order' => $targetRoute->locations()->count() + 1]);
-
-            // Recalculate the target route
-            $this->optimizeRoute($targetRoute);
-
-            DB::commit();
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Locatie succesvol verplaatst.',
-            ]);
-        } catch (\Exception $e) {
-            DB::rollBack();
-            return response()->json([
-                'success' => false,
-                'message' => $e->getMessage(),
-            ], 422);
-        }
-    }
-
-    /**
-     * Recalculate a route's order.
-     */
-    public function recalculateRoute(Request $request)
-    {
-        $request->validate([
-            'route_id' => 'required|exists:routes,id',
-        ]);
-
-        try {
-            DB::beginTransaction();
-
-            $route = Route::findOrFail($request->route_id);
-            $this->optimizeRoute($route);
-
-            DB::commit();
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Route succesvol opnieuw berekend.',
-            ]);
-        } catch (\Exception $e) {
-            DB::rollBack();
-            return response()->json([
-                'success' => false,
-                'message' => $e->getMessage(),
-            ], 422);
-        }
-    }
-
-    /**
-     * Helper method to optimize a route's order.
-     */
     private function optimizeRoute(Route $route)
     {
-        $locations = $route->locations()->get();
-        
-        if ($locations->isEmpty()) {
+        $locs = $route->locations()->orderBy('route_location.order')->get()->all();
+        if (count($locs) < 2) {
             return;
         }
 
-        // Get the first location (starting point)
-        $firstLocation = $locations->first();
-        $remainingLocations = $locations->where('id', '!=', $firstLocation->id)->values();
-        
-        // Initialize the optimized route with the first location
-        $optimizedRoute = collect([$firstLocation]);
-        $currentLocation = $firstLocation;
-        
-        // Use nearest neighbor algorithm to optimize the route
-        while ($remainingLocations->isNotEmpty()) {
-            $nearestLocation = null;
-            $minDistance = PHP_FLOAT_MAX;
-            
-            foreach ($remainingLocations as $location) {
-                $distance = $this->calculateDistance(
-                    $currentLocation->latitude,
-                    $currentLocation->longitude,
-                    $location->latitude,
-                    $location->longitude
-                );
-                
-                if ($distance < $minDistance) {
-                    $minDistance = $distance;
-                    $nearestLocation = $location;
-                }
-            }
-            
-            if ($nearestLocation) {
-                $optimizedRoute->push($nearestLocation);
-                $currentLocation = $nearestLocation;
-                $remainingLocations = $remainingLocations->where('id', '!=', $nearestLocation->id)->values();
-            }
-        }
-        
-        // Update the order in the database
-        foreach ($optimizedRoute as $index => $location) {
-            $route->locations()->updateExistingPivot($location->id, ['order' => $index + 1]);
-        }
-    }
+        // extract IDs
+        $seq = array_map(fn($l) => $l->id, $locs);
 
-    /**
-     * Delete all routes.
-     */
-    public function deleteAll()
-    {
-        try {
-            DB::beginTransaction();
-            
-            // Delete all route relationships and routes
-            DB::table('route_location')->delete();
-            Route::truncate();
-            
-            DB::commit();
-            return redirect()->route('routes.index')->with('success', 'Alle routes zijn verwijderd.');
-        } catch (\Exception $e) {
-            DB::rollBack();
-            return redirect()->back()->with('error', 'Fout bij het verwijderen van routes: ' . $e->getMessage());
+        // build matrix for these points
+        $points = $route->locations->map(fn($l) => (object)[
+            'id'        => $l->id,
+            'latitude'  => $l->latitude,
+            'longitude' => $l->longitude,
+        ])->prepend((object)[
+            'id'        => 0,
+            'latitude'  => 51.8372,
+            'longitude' => 5.6697
+        ]);
+
+        $distances = $this->calculateDistanceMatrix($points);
+        $newSeq    = $this->twoOptImprovement($seq, $distances);
+
+        // update pivot
+        foreach ($newSeq as $i => $locId) {
+            $route->locations()
+                  ->updateExistingPivot($locId, ['order' => $i + 1]);
         }
     }
-} 
+}

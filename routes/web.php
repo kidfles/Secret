@@ -22,3 +22,4 @@ Route::post('/routes/recalculate', [RouteController::class, 'recalculateRoute'])
 Route::delete('/routes/delete-all', [RouteController::class, 'deleteAll'])->name('routes.deleteAll');
 Route::delete('/locations/delete-all', [LocationController::class, 'deleteAll'])->name('locations.deleteAll');
 Route::delete('routes/{route}', [RouteController::class, 'destroy'])->name('routes.destroy');
+Route::put('routes/{route}', [RouteController::class, 'update'])->name('routes.update');
