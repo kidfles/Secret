@@ -12,7 +12,12 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('routes', function (Blueprint $table) {
-            $table->integer('person_capacity')->default(2)->after('description');
+            if (!Schema::hasColumn('routes', 'person_capacity')) {
+                $table->integer('person_capacity')->default(2)->after('description');
+            }
+            if (!Schema::hasColumn('routes', 'capacity')) {
+                $table->integer('capacity')->default(3)->after('person_capacity');
+            }
         });
     }
 
@@ -22,7 +27,7 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('routes', function (Blueprint $table) {
-            $table->dropColumn('person_capacity');
+            $table->dropColumn(['person_capacity', 'capacity']);
         });
     }
-};
+}; 

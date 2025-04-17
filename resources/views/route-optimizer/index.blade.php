@@ -2,12 +2,6 @@
 
 @section('content')
 <div class="container mx-auto px-4 py-8">
-    @if(session('success'))
-        <div class="mb-4 p-4 bg-green-100 border-l-4 border-green-500 text-green-700 rounded-md">
-            {{ session('success') }}
-        </div>
-    @endif
-
     @if(session('error'))
         <div class="mb-4 p-4 bg-red-100 border-l-4 border-red-500 text-red-700 rounded-md">
             {{ session('error') }}
@@ -19,7 +13,7 @@
         <div class="bg-white shadow-lg rounded-lg p-6">
             <div class="mb-6 p-4 bg-red-50 border-l-4 border-red-500 rounded-md">
                 <p class="text-sm text-red-700">
-                    <strong class="font-semibold">Opmerking:</strong> Alle routes beginnen in Overrijssel, Nederland. U hoeft deze locatie niet handmatig toe te voegen.
+                    <strong class="font-semibold">Opmerking:</strong> Alle routes beginnen in Nederasselt, Nederland. U hoeft deze locatie niet handmatig toe te voegen.
                 </p>
             </div>
             
@@ -33,31 +27,36 @@
 
                 <div>
                     <label for="full_address" class="block text-sm font-semibold text-gray-700 mb-1">Volledig Adres</label>
-                    <input type="text" id="full_address" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500 bg-gray-50 py-3" placeholder="Voer volledig adres in (bijv. Hoofdstraat 123, Amsterdam)" required>
+                    <div class="relative">
+                        <input type="text" id="full_address" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500 bg-gray-50 py-3" placeholder="Voer volledig adres in (bijv. Hoofdstraat 123, Amsterdam)" required>
+                        <div id="address-suggestions" class="absolute z-10 w-full mt-1 bg-white rounded-md shadow-lg hidden max-h-60 overflow-y-auto">
+                            <!-- Suggestions will be populated here -->
+                        </div>
+                    </div>
                     <p class="mt-2 text-sm text-gray-500 italic">Voer het volledige adres in en wij vullen het voor u in</p>
                 </div>
 
                 <div class="grid grid-cols-2 gap-4">
                     <div>
-                        <label for="street" class="block text-sm font-semibold text-gray-700 mb-1">Straatnaam</label>
-                        <input type="text" name="street" id="street" class="mt-1 block w-full rounded-md border-gray-300 bg-gray-100 shadow-sm text-gray-600 py-3" readonly>
+                        <label for="street" class="block text-sm font-semibold text-gray-700 mb-1">Straatnaam (optioneel)</label>
+                        <input type="text" name="street" id="street" class="mt-1 block w-full rounded-md border-gray-300 bg-gray-100 shadow-sm text-gray-600 py-3">
                     </div>
 
                     <div>
-                        <label for="house_number" class="block text-sm font-semibold text-gray-700 mb-1">Huisnummer</label>
-                        <input type="text" name="house_number" id="house_number" class="mt-1 block w-full rounded-md border-gray-300 bg-gray-100 shadow-sm text-gray-600 py-3" readonly>
+                        <label for="house_number" class="block text-sm font-semibold text-gray-700 mb-1">Huisnummer (optioneel)</label>
+                        <input type="text" name="house_number" id="house_number" class="mt-1 block w-full rounded-md border-gray-300 bg-gray-100 shadow-sm text-gray-600 py-3">
                     </div>
                 </div>
 
                 <div class="grid grid-cols-2 gap-4">
                     <div>
                         <label for="city" class="block text-sm font-semibold text-gray-700 mb-1">Stad</label>
-                        <input type="text" name="city" id="city" class="mt-1 block w-full rounded-md border-gray-300 bg-gray-100 shadow-sm text-gray-600 py-3" readonly>
+                        <input type="text" name="city" id="city" class="mt-1 block w-full rounded-md border-gray-300 bg-gray-100 shadow-sm text-gray-600 py-3" required>
                     </div>
 
                     <div>
                         <label for="postal_code" class="block text-sm font-semibold text-gray-700 mb-1">Postcode</label>
-                        <input type="text" name="postal_code" id="postal_code" class="mt-1 block w-full rounded-md border-gray-300 bg-gray-100 shadow-sm text-gray-600 py-3" readonly>
+                        <input type="text" name="postal_code" id="postal_code" class="mt-1 block w-full rounded-md border-gray-300 bg-gray-100 shadow-sm text-gray-600 py-3" required>
                     </div>
                 </div>
 
@@ -145,59 +144,145 @@
             map.fitBounds(bounds);
         }
 
-        // Address parsing function
-        function parseAddress(fullAddress) {
-            if (!fullAddress) return;
-            
-            // Set the full address in the hidden field
-            document.getElementById('address').value = fullAddress;
-            
-            // Split the address into parts
-            const parts = fullAddress.split(' ');
-            
-            // The last part is usually the city
-            const city = parts[parts.length - 1];
-            document.getElementById('city').value = city;
-            
-            // The second-to-last part is usually the house number
-            const houseNumber = parts[parts.length - 2];
-            if (houseNumber && /^\d+\w*$/.test(houseNumber)) {
-                document.getElementById('house_number').value = houseNumber;
-                
-                // Everything before the house number is the street name
-                const streetName = parts.slice(0, parts.length - 2).join('');
-                document.getElementById('street').value = streetName;
-            } else {
-                // If no house number found, use the second-to-last part as part of the street name
-                const streetName = parts.slice(0, parts.length - 1).join(' ');
-                document.getElementById('street').value = streetName;
-                document.getElementById('house_number').value = '';
+        // Address suggestions functionality
+        const fullAddressInput = document.getElementById('full_address');
+        const suggestionsContainer = document.getElementById('address-suggestions');
+
+        // Function to fetch and display address suggestions
+        function fetchAddressSuggestions(query) {
+            if (!query || query.length < 3) {
+                suggestionsContainer.classList.add('hidden');
+                return;
             }
-            
-            // Try to get coordinates and postal code for the full address
-            fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(fullAddress)},Netherlands&countrycodes=nl`)
-                .then(response => response.json())
+
+            // Show loading state
+            suggestionsContainer.innerHTML = '<div class="p-2 text-gray-500">Zoeken...</div>';
+            suggestionsContainer.classList.remove('hidden');
+
+            // Add User-Agent header to comply with Nominatim usage policy
+            fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)},Netherlands&countrycodes=nl&limit=5`, {
+                headers: {
+                    'User-Agent': 'RouteOptimizer/1.0'
+                }
+            })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.json();
+                })
                 .then(data => {
+                    suggestionsContainer.innerHTML = '';
+                    
                     if (data && data.length > 0) {
-                        document.getElementById('latitude').value = data[0].lat;
-                        document.getElementById('longitude').value = data[0].lon;
-                        
-                        // Try to extract postal code from the display_name
-                        const displayName = data[0].display_name;
-                        const postalCodeMatch = displayName.match(/\b\d{4}\s*[A-Z]{2}\b/);
-                        if (postalCodeMatch) {
-                            document.getElementById('postal_code').value = postalCodeMatch[0];
-                        }
-                        
-                        // Update the map marker for the new location
-                        updateMapMarker(data[0].lat, data[0].lon, fullAddress);
+                        data.forEach(result => {
+                            const div = document.createElement('div');
+                            div.className = 'p-2 hover:bg-gray-100 cursor-pointer border-b border-gray-200';
+                            div.textContent = result.display_name;
+                            div.addEventListener('click', () => {
+                                fullAddressInput.value = result.display_name;
+                                suggestionsContainer.classList.add('hidden');
+                                parseAddress(result);
+                            });
+                            suggestionsContainer.appendChild(div);
+                        });
+                    } else {
+                        const div = document.createElement('div');
+                        div.className = 'p-2 text-gray-500';
+                        div.textContent = 'Geen adressen gevonden';
+                        suggestionsContainer.appendChild(div);
                     }
                 })
                 .catch(error => {
-                    console.error('Error getting address coordinates:', error);
+                    console.error('Error fetching address suggestions:', error);
+                    suggestionsContainer.innerHTML = '<div class="p-2 text-gray-500">Probeer het opnieuw</div>';
+                    // Hide suggestions after 3 seconds
+                    setTimeout(() => {
+                        suggestionsContainer.classList.add('hidden');
+                    }, 3000);
                 });
         }
-        
+
+        // Add event listeners for address input with debounce
+        let debounceTimer;
+        fullAddressInput.addEventListener('input', function() {
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(() => {
+                fetchAddressSuggestions(this.value);
+            }, 500); // Increased debounce time to 500ms
+        });
+
+        // Show suggestions on focus if there's text
+        fullAddressInput.addEventListener('focus', function() {
+            if (this.value.length >= 3) {
+                fetchAddressSuggestions(this.value);
+            }
+        });
+
+        // Hide suggestions when clicking outside
+        document.addEventListener('click', function(e) {
+            if (!fullAddressInput.contains(e.target) && !suggestionsContainer.contains(e.target)) {
+                suggestionsContainer.classList.add('hidden');
+            }
+        });
+
+        // Prevent form submission when selecting an address
+        suggestionsContainer.addEventListener('click', function(e) {
+            e.preventDefault();
+        });
+
+        // Function to parse address from Nominatim result
+        function parseAddress(result) {
+            const address = result.display_name;
+            document.getElementById('address').value = address;
+            
+            // Split the address into parts
+            const parts = address.split(',').map(part => part.trim());
+            
+            // Extract postal code (usually in format "1234 AB" or "AB 1234")
+            const postalCodeMatch = address.match(/\b\d{4}\s*[A-Z]{2}\b|\b[A-Z]{2}\s*\d{4}\b/);
+            if (postalCodeMatch) {
+                document.getElementById('postal_code').value = postalCodeMatch[0].replace(/\s+/g, '');
+            }
+            
+            // Extract city (usually the second-to-last part before the postal code)
+            let city = '';
+            for (let i = parts.length - 1; i >= 0; i--) {
+                if (!/^\d+$/.test(parts[i]) && !/^\d{4}\s*[A-Z]{2}$/.test(parts[i])) {
+                    city = parts[i];
+                    break;
+                }
+            }
+            document.getElementById('city').value = city;
+            
+            // Extract street and house number
+            // For addresses like "1102, Aalsburg, Wijchen", the first part is the house number
+            const firstPart = parts[0];
+            if (/^\d+$/.test(firstPart)) {
+                // If first part is just a number, it's the house number
+                document.getElementById('house_number').value = firstPart;
+                // The street is the second part
+                document.getElementById('street').value = parts[1] || '';
+            } else {
+                // Try to extract house number from the first part
+                const streetMatch = firstPart.match(/^(.*?)\s*(\d+\w*)$/);
+                if (streetMatch) {
+                    document.getElementById('street').value = streetMatch[1].trim();
+                    document.getElementById('house_number').value = streetMatch[2];
+                } else {
+                    document.getElementById('street').value = firstPart;
+                    document.getElementById('house_number').value = '';
+                }
+            }
+            
+            // Set coordinates
+            document.getElementById('latitude').value = result.lat;
+            document.getElementById('longitude').value = result.lon;
+            
+            // Update map marker
+            updateMapMarker(result.lat, result.lon, address);
+        }
+
         // Function to update the map marker
         function updateMapMarker(lat, lon, address) {
             // Remove existing temporary marker if any
@@ -218,19 +303,6 @@
             // Center map on new marker
             map.setView([lat, lon], 15);
         }
-
-        // Add event listener for the full address input
-        const fullAddressInput = document.getElementById('full_address');
-        
-        // Parse address on input change
-        fullAddressInput.addEventListener('input', function() {
-            parseAddress(this.value);
-        });
-        
-        // Also parse on blur for good measure
-        fullAddressInput.addEventListener('blur', function() {
-            parseAddress(this.value);
-        });
         
         // Handle form submission
         document.getElementById('locationForm').addEventListener('submit', function(e) {
@@ -244,6 +316,18 @@
             // Make sure the address field is set
             if (!document.getElementById('address').value) {
                 document.getElementById('address').value = fullAddressInput.value;
+            }
+
+            // Make sure required fields are filled
+            const requiredFields = ['name', 'city', 'postal_code'];
+            for (const field of requiredFields) {
+                const input = document.getElementById(field);
+                if (!input.value.trim()) {
+                    e.preventDefault();
+                    alert(`Vul het veld "${input.previousElementSibling.textContent.replace(' (optioneel)', '')}" in`);
+                    input.focus();
+                    return;
+                }
             }
         });
     });

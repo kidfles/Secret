@@ -1,177 +1,300 @@
 @extends('layouts.app')
 
 @section('content')
-<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-    <div class="bg-white shadow-sm rounded-lg p-6">
-        <h2 class="text-lg font-semibold mb-4">Route Genereren</h2>
-        
-        @if(session('success'))
-            <div class="mb-4 p-4 bg-green-100 border-l-4 border-green-500 text-green-700 rounded-md">
-                {{ session('success') }}
-            </div>
-        @endif
+<div class="container mx-auto px-4 py-8">
+    @if(session('success'))
+        <div class="mb-4 p-4 bg-green-100 border-l-4 border-green-500 text-green-700 rounded-md">
+            {{ session('success') }}
+        </div>
+    @endif
 
-        @if(session('error'))
-            <div class="mb-4 p-4 bg-red-100 border-l-4 border-red-500 text-red-700 rounded-md">
-                {{ session('error') }}
-            </div>
-        @endif
-        
-        <form action="{{ route('routes.generate') }}" method="POST">
-            @csrf
-            <div class="space-y-4">
-                <div>
-                    <label for="num_routes" class="block text-sm font-medium text-gray-700">Aantal Routes</label>
-                    <input type="number" name="num_routes" id="num_routes" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500" value="1" min="1" required>
-                    <p class="mt-1 text-sm text-gray-500">Aantal routes dat gegenereerd moet worden</p>
+    @if(session('error'))
+        <div class="mb-4 p-4 bg-red-100 border-l-4 border-red-500 text-red-700 rounded-md">
+            {{ session('error') }}
+        </div>
+    @endif
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div class="space-y-6">
+            <div class="bg-white rounded-lg shadow p-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-lg font-semibold">Routes genereren</h2>
+                    <form action="{{ route('routes.deleteAll') }}" method="POST" class="inline" onsubmit="return confirm('Weet je zeker dat je alle routes wilt verwijderen?');">
+                        @csrf
+                        @method('DELETE')
+                        <button type="submit" class="bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2">
+                            Alle routes verwijderen
+                        </button>
+                    </form>
                 </div>
-
-                <div>
-                    <label for="route_capacity" class="block text-sm font-medium text-gray-700">Capaciteit per Route</label>
-                    <input type="number" name="route_capacity" id="route_capacity" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500" value="2" min="1" required>
-                    <p class="mt-1 text-sm text-gray-500">Maximaal aantal personen per route</p>
-                </div>
-
-                <button type="submit" class="w-full bg-red-600 text-white py-2 px-4 rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2">
-                    Routes Genereren
-                </button>
+                <form action="{{ route('routes.generate') }}" method="POST" class="space-y-4">
+                    @csrf
+                    <div>
+                        <label for="num_routes" class="block text-sm font-medium text-gray-700">Aantal routes</label>
+                        <input type="number" name="num_routes" id="num_routes" min="1" value="1" required
+                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                    </div>
+                    <div class="flex justify-end">
+                        <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+                            Routes genereren
+                        </button>
+                    </div>
+                </form>
             </div>
-        </form>
 
-        <div class="mt-8">
-            <h2 class="text-lg font-semibold mb-4">Uw Routes</h2>
-            <div class="space-y-4">
-                @forelse($routes as $route)
-                    <div class="border rounded-lg p-4 hover:bg-gray-50 transition-colors duration-200">
-                        <div class="flex justify-between items-start">
-                            <div>
-                                <h3 class="font-medium text-lg">{{ $route->name }}</h3>
-                                <p class="text-sm text-gray-600">Capaciteit: {{ $route->person_capacity }} personen</p>
-                                <div class="mt-2">
-                                    <h4 class="text-sm font-medium text-gray-700">Locaties:</h4>
-                                    <ol class="list-decimal list-inside text-sm text-gray-600">
-                                        @foreach($route->locations as $location)
-                                            <li>{{ $location->name }} ({{ $location->person_capacity }} personen)</li>
-                                        @endforeach
-                                    </ol>
-                                </div>
-                            </div>
-                            <form action="{{ route('routes.destroy', $route) }}" method="POST">
-                                @csrf
-                                @method('DELETE')
-                                <button type="submit" class="text-red-600 hover:text-red-800">
-                                    Verwijderen
-                                </button>
-                            </form>
+            <div class="bg-white rounded-lg shadow p-6">
+                <h2 class="text-lg font-semibold mb-4">Startlocatie</h2>
+                <div class="flex items-center space-x-4 p-4 bg-gray-50 rounded-lg">
+                    <div class="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white">
+                        <i class="fas fa-map-marker-alt"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-medium">Broekstraat 68</h3>
+                        <p class="text-sm text-gray-600">Nederasselt</p>
+                    </div>
+                </div>
+            </div>
+
+            @foreach($routes as $route)
+            <div class="bg-white rounded-lg shadow p-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-lg font-semibold">Route {{ $loop->iteration }}</h2>
+                    <div class="flex space-x-2">
+                        <button onclick="recalculateRoute({{ $route->id }})" class="text-blue-600 hover:text-blue-800">
+                            <i class="fas fa-sync-alt"></i>
+                        </button>
+                        <form action="{{ route('routes.destroy', $route) }}" method="POST" class="inline">
+                            @csrf
+                            @method('DELETE')
+                            <button type="submit" class="text-red-600 hover:text-red-800" onclick="return confirm('Weet je zeker dat je deze route wilt verwijderen?')">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </form>
+                    </div>
+                </div>
+                <div class="space-y-2" id="route-{{ $route->id }}">
+                    @foreach($route->locations as $location)
+                    <div class="location-item flex items-center space-x-4 p-4 bg-gray-50 rounded-lg cursor-move" draggable="true" data-location-id="{{ $location->id }}">
+                        <div class="w-8 h-8 rounded-full bg-gray-500 flex items-center justify-center text-white">
+                            {{ $loop->iteration }}
+                        </div>
+                        <div>
+                            <h3 class="font-medium">{{ $location->address }}</h3>
+                            <p class="text-sm text-gray-600">{{ $location->city }}</p>
                         </div>
                     </div>
-                @empty
-                    <p class="text-gray-500 text-center py-4">Nog geen routes gegenereerd.</p>
-                @endforelse
+                    @endforeach
+                </div>
             </div>
+            @endforeach
+        </div>
+        <div class="bg-white rounded-lg shadow p-6">
+            <div id="map" class="h-[600px] rounded-lg"></div>
         </div>
     </div>
-
-    <div class="bg-white shadow-sm rounded-lg p-6">
-        <div id="map" class="h-[600px] rounded-lg"></div>
-    </div>
 </div>
+
+<style>
+.route-locations {
+    min-height: 50px;
+}
+
+.location-item {
+    cursor: move;
+}
+
+.location-item.dragging {
+    opacity: 0.5;
+    background: #f8f9fa;
+}
+
+.route-locations.drag-over {
+    background: #f3f4f6;
+}
+
+.location-content {
+    pointer-events: none;
+}
+</style>
+
 @endsection
 
 @push('scripts')
+<script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+<link href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" rel="stylesheet">
 <script>
-    // Defer map initialization until after page load
-    window.addEventListener('load', function() {
-        // Check if Leaflet is loaded
-        if (typeof L === 'undefined') {
-            console.error('Leaflet not loaded');
-            return;
-        }
-        
-        // Initialize map with a slight delay to prioritize other page elements
-        setTimeout(function() {
-            const map = L.map('map').setView([52.3676, 4.9041], 7); // Center on Netherlands
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '© OpenStreetMap contributors'
-            }).addTo(map);
+document.addEventListener('DOMContentLoaded', function() {
+    // Initialize map
+    const map = L.map('map').setView([51.8372, 5.6697], 10);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
 
-            const routes = @json($routes);
+    // Add starting location marker
+    const startLocation = {
+        lat: 51.8372,
+        lng: 5.6697,
+        name: 'Broekstraat 68',
+        address: 'Nederasselt'
+    };
+    const startMarker = L.marker([startLocation.lat, startLocation.lng]).addTo(map);
+    startMarker.bindPopup(`
+        <div class="p-2">
+            <h3 class="font-medium">${startLocation.name}</h3>
+            <p class="text-sm text-gray-600">${startLocation.address}</p>
+        </div>
+    `);
+
+    // Store route polylines
+    const routePolylines = new Map();
+    const routeMarkers = new Map();
+
+    // Update map with route visualization
+    function updateMap(routes) {
+        // Clear existing polylines and markers
+        routePolylines.forEach(polyline => polyline.remove());
+        routePolylines.clear();
+        routeMarkers.forEach(markers => markers.forEach(marker => marker.remove()));
+        routeMarkers.clear();
+
+        // Add starting location to bounds
+        const bounds = L.latLngBounds([startLocation.lat, startLocation.lng]);
+
+        // Colors for different routes
+        const colors = ['#FF0000', '#00FF00', '#0000FF', '#FFA500', '#800080'];
+
+        routes.forEach((route, index) => {
+            const color = colors[index % colors.length];
             const markers = [];
-            const polylines = [];
-            
-            // Only process routes if there are any
-            if (routes.length === 0) {
-                return;
-            }
-            
-            // Process routes in batches to avoid blocking the UI
-            const processRoutes = function(startIndex) {
-                const batchSize = 2; // Process 2 routes at a time
-                const endIndex = Math.min(startIndex + batchSize, routes.length);
-                
-                for (let i = startIndex; i < endIndex; i++) {
-                    const route = routes[i];
-                    const routeCoordinates = [];
-                    const routeColor = getRouteColor(i);
-                    
-                    // Process locations for this route
-                    route.locations.forEach((location, locationIndex) => {
-                        const marker = L.marker([location.latitude, location.longitude])
-                            .bindPopup(`
-                                <div class="p-2">
-                                    <h3 class="font-medium">${route.name} - Stop ${locationIndex + 1}</h3>
-                                    <p class="text-sm">${location.name}</p>
-                                    <p class="text-sm text-gray-500">${location.person_capacity} personen</p>
-                                </div>
-                            `)
-                            .addTo(map);
-                        markers.push(marker);
-                        routeCoordinates.push([location.latitude, location.longitude]);
-                    });
+            const coordinates = [[startLocation.lat, startLocation.lng]];
 
-                    if (routeCoordinates.length > 1) {
-                        const polyline = L.polyline(routeCoordinates, {
-                            color: routeColor,
-                            weight: 3,
-                            opacity: 0.7
-                        }).addTo(map);
-                        polylines.push(polyline);
-                    }
-                }
-                
-                // If there are more routes to process, schedule the next batch
-                if (endIndex < routes.length) {
-                    setTimeout(function() {
-                        processRoutes(endIndex);
-                    }, 100);
-                } else {
-                    // All routes processed, fit bounds to markers
-                    if (markers.length > 0) {
-                        const bounds = L.latLngBounds(markers.map(marker => marker.getLatLng()));
-                        map.fitBounds(bounds);
-                    }
-                }
-            };
-            
-            // Start processing routes
-            processRoutes(0);
-        }, 500); // 500ms delay
+            // Add route locations
+            route.locations.forEach(location => {
+                const marker = L.marker([location.latitude, location.longitude]).addTo(map);
+                marker.bindPopup(`
+                    <div class="p-2">
+                        <h3 class="font-medium">${location.address}</h3>
+                        <p class="text-sm text-gray-600">${location.city}</p>
+                    </div>
+                `);
+                markers.push(marker);
+                coordinates.push([location.latitude, location.longitude]);
+                bounds.extend([location.latitude, location.longitude]);
+            });
+
+            // Add polyline for the route
+            const polyline = L.polyline(coordinates, { color: color, weight: 3, opacity: 0.7 }).addTo(map);
+            routePolylines.set(route.id, polyline);
+            routeMarkers.set(route.id, markers);
+
+            // Add back to start
+            polyline.addLatLng([startLocation.lat, startLocation.lng]);
+        });
+
+        // Fit map to bounds
+        map.fitBounds(bounds, { padding: [50, 50] });
+    }
+
+    // Initialize routes
+    const routes = @json($routes);
+    updateMap(routes);
+
+    // Drag and drop functionality
+    document.querySelectorAll('.location-item').forEach(item => {
+        item.addEventListener('dragstart', handleDragStart);
+        item.addEventListener('dragend', handleDragEnd);
     });
 
-    function getRouteColor(index) {
-        const colors = [
-            '#FF0000', // Red
-            '#0000FF', // Blue
-            '#00FF00', // Green
-            '#FFA500', // Orange
-            '#800080', // Purple
-            '#008080', // Teal
-            '#FFD700', // Gold
-            '#FF69B4', // Pink
-            '#4B0082', // Indigo
-            '#006400'  // Dark Green
-        ];
-        return colors[index % colors.length];
+    document.querySelectorAll('[id^="route-"]').forEach(container => {
+        container.addEventListener('dragover', handleDragOver);
+        container.addEventListener('dragenter', handleDragEnter);
+        container.addEventListener('dragleave', handleDragLeave);
+        container.addEventListener('drop', handleDrop);
+    });
+
+    function handleDragStart(e) {
+        e.target.classList.add('opacity-50');
+        e.dataTransfer.setData('text/plain', e.target.dataset.locationId);
     }
+
+    function handleDragEnd(e) {
+        e.target.classList.remove('opacity-50');
+    }
+
+    function handleDragOver(e) {
+        e.preventDefault();
+    }
+
+    function handleDragEnter(e) {
+        e.preventDefault();
+        e.target.closest('[id^="route-"]').classList.add('bg-blue-50');
+    }
+
+    function handleDragLeave(e) {
+        e.target.closest('[id^="route-"]').classList.remove('bg-blue-50');
+    }
+
+    function handleDrop(e) {
+        e.preventDefault();
+        const container = e.target.closest('[id^="route-"]');
+        container.classList.remove('bg-blue-50');
+
+        const locationId = e.dataTransfer.getData('text/plain');
+        const sourceRoute = document.querySelector(`[data-location-id="${locationId}"]`).closest('[id^="route-"]');
+        const targetRoute = container;
+
+        if (sourceRoute !== targetRoute) {
+            moveLocation(locationId, sourceRoute.id.split('-')[1], targetRoute.id.split('-')[1]);
+        }
+    }
+
+    function moveLocation(locationId, sourceRouteId, targetRouteId) {
+        fetch(`/routes/${sourceRouteId}/move-location`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+            },
+            body: JSON.stringify({
+                location_id: locationId,
+                target_route_id: targetRouteId
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                window.location.reload();
+            } else {
+                alert('Error moving location: ' + data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error moving location');
+        });
+    }
+
+    function recalculateRoute(routeId) {
+        fetch(`/routes/${routeId}/recalculate`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                window.location.reload();
+            } else {
+                alert('Error recalculating route: ' + data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error recalculating route');
+        });
+    }
+});
 </script>
-@endpush 
+@endpush
