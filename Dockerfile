@@ -28,16 +28,27 @@ COPY . .
 # Install dependencies
 RUN composer install
 
+# Create storage directory structure
+RUN mkdir -p /var/www/storage/logs \
+    && mkdir -p /var/www/storage/framework/sessions \
+    && mkdir -p /var/www/storage/framework/views \
+    && mkdir -p /var/www/storage/framework/cache \
+    && mkdir -p /var/www/bootstrap/cache
+
 # Set permissions
 RUN chown -R www-data:www-data /var/www \
     && chmod -R 775 /var/www/storage \
     && chmod -R 775 /var/www/bootstrap/cache \
-    && mkdir -p /var/www/storage/logs \
     && touch /var/www/storage/logs/laravel.log \
+    && chown www-data:www-data /var/www/storage/logs/laravel.log \
     && chmod 664 /var/www/storage/logs/laravel.log
+
+# Copy and set permissions for entrypoint script
+COPY docker/entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/entrypoint.sh
 
 # Expose port 9000
 EXPOSE 9000
 
-# Start PHP-FPM
-CMD ["php-fpm"] 
+# Set entrypoint
+ENTRYPOINT ["entrypoint.sh"] 

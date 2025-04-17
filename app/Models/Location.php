@@ -8,7 +8,10 @@ class Location extends Model
 {
     protected $fillable = [
         'name',
-        'address',
+        'street',
+        'house_number',
+        'city',
+        'postal_code',
         'latitude',
         'longitude',
         'person_capacity'
@@ -16,7 +19,10 @@ class Location extends Model
 
     public static $rules = [
         'name' => 'required|string|max:255',
-        'address' => 'required|string|max:255',
+        'street' => 'required|string|max:255',
+        'house_number' => 'required|string|max:20',
+        'city' => 'required|string|max:255',
+        'postal_code' => 'nullable|string|max:10',
         'latitude' => 'required|numeric|between:-90,90',
         'longitude' => 'required|numeric|between:-180,180',
         'person_capacity' => 'required|integer|min:1'

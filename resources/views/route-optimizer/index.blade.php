@@ -42,6 +42,11 @@
                 </div>
 
                 <div>
+                    <label for="postal_code" class="block text-sm font-medium text-gray-700">Postcode</label>
+                    <input type="text" name="postal_code" id="postal_code" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500" readonly>
+                </div>
+
+                <div>
                     <label for="person_capacity" class="block text-sm font-medium text-gray-700">Aantal Personen</label>
                     <input type="number" name="person_capacity" id="person_capacity" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500" value="2" min="1">
                     <p class="mt-1 text-sm text-gray-500">Standaard is 2 personen per locatie</p>
@@ -66,7 +71,8 @@
                         <div class="flex justify-between items-start">
                             <div>
                                 <h3 class="font-medium text-lg">{{ $location->name }}</h3>
-                                <p class="text-sm text-gray-600">{{ $location->address }}</p>
+                                <p class="text-sm text-gray-600">{{ $location->street }} {{ $location->house_number }}</p>
+                                <p class="text-sm text-gray-600">{{ $location->postal_code }} {{ $location->city }}</p>
                                 <p class="text-sm text-gray-500 mt-1">Capaciteit: {{ $location->person_capacity }} personen</p>
                             </div>
                             <form action="{{ route('route-optimizer.destroy', $location) }}" method="POST">
@@ -128,7 +134,7 @@
         
         try {
             // Use Nominatim OpenStreetMap API for geocoding
-            const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(fullAddress)}`);
+            const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(fullAddress)}&countrycodes=nl`);
             const data = await response.json();
             
             if (data && data.length > 0) {
@@ -140,21 +146,41 @@
                 // Parse the address components
                 const addressParts = data[0].display_name.split(', ');
                 
-                // Extract city (usually the second-to-last part)
-                const city = addressParts[addressParts.length - 2] || '';
+                // Extract city (usually the second-to-last part before postal code)
+                const cityIndex = addressParts.findIndex(part => /^\d{4}\s*[A-Z]{2}$/.test(part)) - 1;
+                const city = cityIndex >= 0 ? addressParts[cityIndex] : '';
                 document.getElementById('city').value = city;
+                
+                // Extract postal code
+                const postalCodeMatch = addressParts.find(part => /^\d{4}\s*[A-Z]{2}$/.test(part));
+                document.getElementById('postal_code').value = postalCodeMatch || '';
                 
                 // Extract street and house number from the first part
                 const streetPart = addressParts[0] || '';
-                const streetMatch = streetPart.match(/^(.+?)\s+(\d+.*)$/);
+                
+                // Dutch address format: "Streetname 123" or "Streetname 123A"
+                const streetMatch = streetPart.match(/^(.+?)\s+(\d+\w*)$/);
                 
                 if (streetMatch) {
-                    document.getElementById('street').value = streetMatch[1].trim();
-                    document.getElementById('house_number').value = streetMatch[2].trim();
+                    // Clean up the street name (remove any trailing spaces or special characters)
+                    const streetName = streetMatch[1].trim().replace(/\s+/g, ' ');
+                    const houseNumber = streetMatch[2].trim();
+                    
+                    document.getElementById('street').value = streetName;
+                    document.getElementById('house_number').value = houseNumber;
                 } else {
-                    // If we can't parse it properly, just put the whole first part as street
-                    document.getElementById('street').value = streetPart;
-                    document.getElementById('house_number').value = '';
+                    // If we can't parse it properly, try to extract just the number
+                    const numberMatch = streetPart.match(/\d+\w*$/);
+                    if (numberMatch) {
+                        const streetName = streetPart.substring(0, numberMatch.index).trim();
+                        const houseNumber = numberMatch[0];
+                        document.getElementById('street').value = streetName;
+                        document.getElementById('house_number').value = houseNumber;
+                    } else {
+                        // If no number found, use the whole string as street name
+                        document.getElementById('street').value = streetPart;
+                        document.getElementById('house_number').value = '';
+                    }
                 }
             } else {
                 alert('Adres niet gevonden. Controleer het adres en probeer het opnieuw.');
@@ -178,7 +204,7 @@
             }
             
             try {
-                const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(fullAddress)}`);
+                const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(fullAddress)}&countrycodes=nl`);
                 const data = await response.json();
                 
                 if (data && data.length > 0) {
@@ -189,21 +215,41 @@
                     // Parse the address components
                     const addressParts = data[0].display_name.split(', ');
                     
-                    // Extract city (usually the second-to-last part)
-                    const city = addressParts[addressParts.length - 2] || '';
+                    // Extract city (usually the second-to-last part before postal code)
+                    const cityIndex = addressParts.findIndex(part => /^\d{4}\s*[A-Z]{2}$/.test(part)) - 1;
+                    const city = cityIndex >= 0 ? addressParts[cityIndex] : '';
                     document.getElementById('city').value = city;
+                    
+                    // Extract postal code
+                    const postalCodeMatch = addressParts.find(part => /^\d{4}\s*[A-Z]{2}$/.test(part));
+                    document.getElementById('postal_code').value = postalCodeMatch || '';
                     
                     // Extract street and house number from the first part
                     const streetPart = addressParts[0] || '';
-                    const streetMatch = streetPart.match(/^(.+?)\s+(\d+.*)$/);
+                    
+                    // Dutch address format: "Streetname 123" or "Streetname 123A"
+                    const streetMatch = streetPart.match(/^(.+?)\s+(\d+\w*)$/);
                     
                     if (streetMatch) {
-                        document.getElementById('street').value = streetMatch[1].trim();
-                        document.getElementById('house_number').value = streetMatch[2].trim();
+                        // Clean up the street name (remove any trailing spaces or special characters)
+                        const streetName = streetMatch[1].trim().replace(/\s+/g, ' ');
+                        const houseNumber = streetMatch[2].trim();
+                        
+                        document.getElementById('street').value = streetName;
+                        document.getElementById('house_number').value = houseNumber;
                     } else {
-                        // If we can't parse it properly, just put the whole first part as street
-                        document.getElementById('street').value = streetPart;
-                        document.getElementById('house_number').value = '';
+                        // If we can't parse it properly, try to extract just the number
+                        const numberMatch = streetPart.match(/\d+\w*$/);
+                        if (numberMatch) {
+                            const streetName = streetPart.substring(0, numberMatch.index).trim();
+                            const houseNumber = numberMatch[0];
+                            document.getElementById('street').value = streetName;
+                            document.getElementById('house_number').value = houseNumber;
+                        } else {
+                            // If no number found, use the whole string as street name
+                            document.getElementById('street').value = streetPart;
+                            document.getElementById('house_number').value = '';
+                        }
                     }
                     
                     // Submit the form
@@ -216,7 +262,7 @@
                 alert('Fout bij het opzoeken van het adres. Probeer het opnieuw.');
             }
         } else {
-            // If we already have the coordinates, just submit the form
+            // If we already have coordinates, submit the form
             this.submit();
         }
     });
