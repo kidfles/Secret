@@ -12,7 +12,6 @@ class RouteController extends Controller
 {
     public function index()
     {
-        // Cache routes and locations for 15 minutes (increased from 5)
         $routes = Cache::remember('routes', 900, function () {
             return Route::with(['locations' => function ($query) {
                 $query->select('locations.id', 'locations.name', 'locations.address', 'locations.latitude', 'locations.longitude', 'locations.person_capacity')
@@ -20,72 +19,7 @@ class RouteController extends Controller
             }])->get();
         });
 
-        // Only load locations if they're not already in the routes
-        $locations = Cache::remember('available_locations', 900, function () use ($routes) {
-            // Get all location IDs that are already in routes
-            $usedLocationIds = collect();
-            foreach ($routes as $route) {
-                $usedLocationIds = $usedLocationIds->merge($route->locations->pluck('id'));
-            }
-            $usedLocationIds = $usedLocationIds->unique();
-            
-            // Only get locations that aren't in any route
-            return Location::whereNotIn('id', $usedLocationIds)
-                ->select('id', 'name', 'address', 'latitude', 'longitude', 'person_capacity')
-                ->get();
-        });
-
-        return view('routes.index', compact('routes', 'locations'));
-    }
-
-    public function store(Request $request)
-    {
-        $request->validate([
-            'name' => 'required|string|max:255',
-            'description' => 'nullable|string',
-            'locations' => 'required|array|min:2',
-            'locations.*' => 'exists:locations,id',
-            'person_capacity' => 'required|integer|min:1'
-        ]);
-
-        DB::beginTransaction();
-        try {
-            $route = Route::create([
-                'name' => $request->name,
-                'description' => $request->description,
-                'person_capacity' => $request->person_capacity,
-            ]);
-
-            $locations = collect($request->locations)->mapWithKeys(function ($id, $index) {
-                return [$id => ['order' => $index]];
-            })->toArray();
-
-            $route->locations()->attach($locations);
-
-            DB::commit();
-            
-            // Clear cache after successful creation
-            Cache::forget('routes');
-            
-            return redirect()->route('routes.index')
-                ->with('success', 'Route created successfully.');
-        } catch (\Exception $e) {
-            DB::rollBack();
-            return redirect()->back()
-                ->with('error', 'Error creating route: ' . $e->getMessage());
-        }
-    }
-
-    public function show(Route $route)
-    {
-        $route = Cache::remember('route.' . $route->id, 300, function () use ($route) {
-            return $route->load(['locations' => function ($query) {
-                $query->select('id', 'name', 'address', 'latitude', 'longitude', 'person_capacity')
-                    ->orderBy('order');
-            }]);
-        });
-
-        return view('routes.show', compact('route'));
+        return view('routes.index', compact('routes'));
     }
 
     public function destroy(Route $route)
@@ -95,9 +29,7 @@ class RouteController extends Controller
             $route->delete();
             DB::commit();
             
-            // Clear cache after successful deletion
             Cache::forget('routes');
-            Cache::forget('route.' . $route->id);
             
             return redirect()->route('routes.index')
                 ->with('success', 'Route deleted successfully.');
@@ -210,7 +142,6 @@ class RouteController extends Controller
 
             DB::commit();
 
-            // Clear route cache
             Cache::forget('routes');
 
             return redirect()->route('routes.index')
@@ -223,9 +154,6 @@ class RouteController extends Controller
         }
     }
     
-    /**
-     * Calculate the distance between two points using the Haversine formula
-     */
     private function calculateDistance($lat1, $lon1, $lat2, $lon2)
     {
         $earthRadius = 6371; // Radius of the earth in km

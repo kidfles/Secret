@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 class Location extends Model
 {
@@ -12,10 +13,16 @@ class Location extends Model
         'house_number',
         'city',
         'postal_code',
+        'address',
         'latitude',
         'longitude',
-        'person_capacity',
-        'address'
+        'person_capacity'
+    ];
+
+    protected $casts = [
+        'latitude' => 'float',
+        'longitude' => 'float',
+        'person_capacity' => 'integer'
     ];
 
     public static $rules = [
@@ -30,7 +37,7 @@ class Location extends Model
         'address' => 'required|string|max:255'
     ];
 
-    public function routes()
+    public function routes(): BelongsToMany
     {
         return $this->belongsToMany(Route::class, 'route_location')
             ->withPivot('order')

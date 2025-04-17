@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\Location;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 
 class RouteOptimizerController extends Controller
 {
@@ -12,7 +14,7 @@ class RouteOptimizerController extends Controller
      */
     public function index()
     {
-        $locations = Location::all();
+        $locations = Location::orderBy('name')->get();
         return view('route-optimizer.index', compact('locations'));
     }
 
@@ -29,12 +31,29 @@ class RouteOptimizerController extends Controller
      */
     public function store(Request $request)
     {
-        $validated = $request->validate(array_merge(Location::$rules, [
-            'person_capacity' => 'required|integer|min:1'
-        ]));
+        try {
+            $validated = $request->validate([
+                'name' => 'required|string|max:255',
+                'street' => 'required|string|max:255',
+                'house_number' => 'required|string|max:10',
+                'city' => 'required|string|max:255',
+                'postal_code' => 'required|string|max:10',
+                'address' => 'required|string|max:255',
+                'latitude' => 'required|numeric',
+                'longitude' => 'required|numeric',
+                'person_capacity' => 'required|integer|min:1'
+            ]);
 
-        Location::create($validated);
-        return redirect()->route('route-optimizer.index')->with('success', 'Location added successfully');
+            $location = Location::create($validated);
+
+            Cache::forget('routes');
+
+            return redirect()->route('route-optimizer.index')
+                ->with('success', 'Location added successfully!');
+        } catch (\Exception $e) {
+            return redirect()->route('route-optimizer.index')
+                ->with('error', 'Error adding location: ' . $e->getMessage());
+        }
     }
 
     /**
@@ -67,17 +86,24 @@ class RouteOptimizerController extends Controller
     public function destroy(Location $location)
     {
         try {
-            // First, remove any route associations
+            DB::beginTransaction();
+            
+            // Remove the location from any routes
             $location->routes()->detach();
             
-            // Then delete the location
+            // Delete the location
             $location->delete();
             
+            DB::commit();
+            
+            Cache::forget('routes');
+            
             return redirect()->route('route-optimizer.index')
-                ->with('success', 'Locatie succesvol verwijderd');
+                ->with('success', 'Location deleted successfully!');
         } catch (\Exception $e) {
+            DB::rollBack();
             return redirect()->route('route-optimizer.index')
-                ->with('error', 'Er is een fout opgetreden bij het verwijderen van de locatie: ' . $e->getMessage());
+                ->with('error', 'Error deleting location: ' . $e->getMessage());
         }
     }
 }
