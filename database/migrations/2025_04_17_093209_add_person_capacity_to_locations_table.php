@@ -11,9 +11,8 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('locations', function (Blueprint $table) {
-            $table->id();
-            $table->timestamps();
+        Schema::table('locations', function (Blueprint $table) {
+            $table->integer('person_capacity')->default(2)->after('longitude');
         });
     }
 
@@ -22,6 +21,8 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('locations');
+        Schema::table('locations', function (Blueprint $table) {
+            $table->dropColumn('person_capacity');
+        });
     }
 };

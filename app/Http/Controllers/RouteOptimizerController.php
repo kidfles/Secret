@@ -29,7 +29,10 @@ class RouteOptimizerController extends Controller
      */
     public function store(Request $request)
     {
-        $validated = $request->validate(Location::$rules);
+        $validated = $request->validate(array_merge(Location::$rules, [
+            'person_capacity' => 'required|integer|min:1'
+        ]));
+
         Location::create($validated);
         return redirect()->route('route-optimizer.index')->with('success', 'Location added successfully');
     }
@@ -61,8 +64,9 @@ class RouteOptimizerController extends Controller
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy(string $id)
+    public function destroy(Location $location)
     {
-        //
+        $location->delete();
+        return redirect()->route('route-optimizer.index')->with('success', 'Location deleted successfully');
     }
 }

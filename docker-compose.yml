@@ -11,22 +11,28 @@ services:
       - ./:/var/www
     networks:
       - route-optimizer
+    depends_on:
+      - db
 
   db:
     image: mysql:8.0
     container_name: route-optimizer-db
     restart: unless-stopped
     environment:
-      MYSQL_DATABASE: ${DB_DATABASE}
-      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
-      MYSQL_PASSWORD: ${DB_PASSWORD}
-      MYSQL_USER: ${DB_USERNAME}
+      MYSQL_DATABASE: route_optimizer
+      MYSQL_USER: route_optimizer
+      MYSQL_PASSWORD: secret
+      MYSQL_ROOT_PASSWORD: secret
       SERVICE_TAGS: dev
       SERVICE_NAME: mysql
+    ports:
+      - "3307:3306"
     volumes:
       - ./docker/mysql:/docker-entrypoint-initdb.d
+      - dbdata:/var/lib/mysql
     networks:
       - route-optimizer
+    command: --default-authentication-plugin=mysql_native_password
 
   nginx:
     image: nginx:alpine
@@ -39,7 +45,24 @@ services:
       - ./docker/nginx:/etc/nginx/conf.d/
     networks:
       - route-optimizer
+    depends_on:
+      - app
+
+  python:
+    image: python:3.11-slim
+    container_name: route-optimizer-python
+    restart: unless-stopped
+    working_dir: /app
+    volumes:
+      - ./:/app
+    networks:
+      - route-optimizer
+    command: tail -f /dev/null  # Keep container running
 
 networks:
   route-optimizer:
-    driver: bridge 
+    name: route-optimizer
+    driver: bridge
+
+volumes:
+  dbdata: 
