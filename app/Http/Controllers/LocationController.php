@@ -18,6 +18,7 @@ class LocationController extends Controller
             
             // Delete all route relationships first
             DB::table('route_location')->delete();
+            DB::table('location_route')->delete();
             // Delete all routes
             DB::table('routes')->delete();
             // Delete all locations
@@ -38,6 +39,7 @@ class LocationController extends Controller
             
             // Delete the location's relationships with routes
             DB::table('route_location')->where('location_id', $location->id)->delete();
+            DB::table('location_route')->where('location_id', $location->id)->delete();
             
             // Delete the location
             $location->delete();

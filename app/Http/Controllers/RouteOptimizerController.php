@@ -38,11 +38,13 @@ class RouteOptimizerController extends Controller
                 'house_number' => 'required|string|max:10',
                 'city' => 'required|string|max:255',
                 'postal_code' => 'required|string|max:10',
-                'address' => 'required|string|max:255',
                 'latitude' => 'required|numeric',
                 'longitude' => 'required|numeric',
                 'person_capacity' => 'required|integer|min:1'
             ]);
+
+            // Generate address field automatically
+            $validated['address'] = $validated['street'] . ' ' . $validated['house_number'] . ', ' . $validated['city'];
 
             $location = Location::create($validated);
 

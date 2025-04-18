@@ -1,6 +1,6 @@
 FROM php:8.2-fpm
 
-# Install system dependencies
+# Install system dependencies (only the essential ones)
 RUN apt-get update && apt-get install -y \
     git \
     curl \
@@ -8,25 +8,43 @@ RUN apt-get update && apt-get install -y \
     libonig-dev \
     libxml2-dev \
     zip \
-    unzip
-
-# Clear cache
-RUN apt-get clean && rm -rf /var/lib/apt/lists/*
+    unzip \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
 # Install PHP extensions
 RUN docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd
 
-# Get latest Composer
+# Install Redis extension
+RUN pecl install redis && docker-php-ext-enable redis
+
+# Get latest Composer and optimize it
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+ENV COMPOSER_ALLOW_SUPERUSER=1
+ENV COMPOSER_PROCESS_TIMEOUT=1200
 
 # Set working directory
 WORKDIR /var/www
 
+# Copy composer files first for better layer caching
+COPY composer.json composer.lock ./
+
+# Install dependencies
+RUN composer install --no-scripts --no-autoloader --no-dev
+
 # Copy existing application directory
 COPY . .
 
-# Install dependencies
-RUN composer install
+# Create autoloader with optimization
+RUN composer dump-autoload --optimize
+
+# PHP optimization settings
+RUN echo "opcache.enable=1" >> /usr/local/etc/php/conf.d/opcache.ini \
+    && echo "opcache.memory_consumption=128" >> /usr/local/etc/php/conf.d/opcache.ini \
+    && echo "opcache.interned_strings_buffer=8" >> /usr/local/etc/php/conf.d/opcache.ini \
+    && echo "opcache.max_accelerated_files=4000" >> /usr/local/etc/php/conf.d/opcache.ini \
+    && echo "opcache.revalidate_freq=60" >> /usr/local/etc/php/conf.d/opcache.ini \
+    && echo "opcache.fast_shutdown=1" >> /usr/local/etc/php/conf.d/opcache.ini
 
 # Create storage directory structure
 RUN mkdir -p /var/www/storage/logs \
@@ -46,10 +64,6 @@ RUN chown -R www-data:www-data /var/www \
 # Copy and set permissions for entrypoint script
 COPY docker/entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/entrypoint.sh
-
-# Disable / remove Xdebug
-RUN pecl uninstall xdebug || true \
- && docker-php-ext-disable xdebug || true
 
 EXPOSE 9000
 ENTRYPOINT ["entrypoint.sh"]

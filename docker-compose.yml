@@ -12,27 +12,7 @@ services:
     networks:
       - route-optimizer
     depends_on:
-      - db
-
-  db:
-    image: mysql:8.0
-    container_name: route-optimizer-db
-    restart: unless-stopped
-    environment:
-      MYSQL_DATABASE: ${DB_DATABASE}
-      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
-      MYSQL_PASSWORD: ${DB_PASSWORD}
-      MYSQL_USER: ${DB_USERNAME}
-      SERVICE_TAGS: dev
-      SERVICE_NAME: mysql
-    ports:
-      - "3307:3306"
-    volumes:
-      - ./docker/mysql:/docker-entrypoint-initdb.d
-      - dbdata:/var/lib/mysql
-    networks:
-      - route-optimizer
-    command: --default-authentication-plugin=mysql_native_password
+      - redis
 
   nginx:
     image: nginx:alpine
@@ -48,23 +28,15 @@ services:
     depends_on:
       - app
 
-  python:
-    image: python:3.11-slim
-    container_name: route-optimizer-python
-    restart: unless-stopped
-    working_dir: /app
-    volumes:
-      - ./:/app
-    networks:
-      - route-optimizer
-    command: tail -f /dev/null
-
   redis:
     image: redis:alpine
     container_name: route-optimizer-redis
     restart: unless-stopped
     ports:
       - "6379:6379"
+    command: redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redisdata:/data
     networks:
       - route-optimizer
 
@@ -74,4 +46,4 @@ networks:
     driver: bridge
 
 volumes:
-  dbdata: 
+  redisdata: 

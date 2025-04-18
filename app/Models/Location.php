@@ -18,6 +18,8 @@ class Location extends Model
         'postal_code',
         'latitude',
         'longitude',
+        'person_capacity',
+        'address',
     ];
 
     protected $casts = [
