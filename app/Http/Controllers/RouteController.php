@@ -15,9 +15,64 @@ class RouteController extends Controller
 
     public function index()
     {
+        // Debug: Count queries
+        DB::enableQueryLog();
+        
+        // Try to retrieve from cache first
+        $cacheKey = self::CACHE_KEY . '_index';
+        
+        if (Cache::has($cacheKey)) {
+            $data = Cache::get($cacheKey);
+            
+            // Add query debugging info
+            $queryLog = DB::getQueryLog();
+            $queryCount = count($queryLog);
+            $data['queryCount'] = $queryCount;
+            $data['queryLog'] = $queryLog;
+            $data['fromCache'] = true;
+            
+            return view('routes.index', $data);
+        }
+        
         $routes = Route::with(['locations' => function ($q) {
             $q->orderBy('route_location.order');
         }])->get();
+
+        // Pre-calculate tile totals and stats for each route to avoid N+1 queries
+        $routeStats = [];
+        $totalTilesAll = 0;
+        
+        foreach ($routes as $route) {
+            $routeTiles = 0;
+            $tilesByType = [];
+            
+            foreach ($route->locations as $location) {
+                if ($location->tegels_count > 0) {
+                    $routeTiles += $location->tegels_count;
+                    $type = $location->tegels_type ?? 'onbekend';
+                    
+                    if (!isset($tilesByType[$type])) {
+                        $tilesByType[$type] = 0;
+                    }
+                    
+                    $tilesByType[$type] += $location->tegels_count;
+                }
+            }
+            
+            $totalTilesAll += $routeTiles;
+            
+            $routeStats[$route->id] = [
+                'total_tiles' => $routeTiles,
+                'tiles_by_type' => $tilesByType,
+                'location_count' => $route->locations->count()
+            ];
+        }
+        
+        // Calculate average and max difference
+        $avgTiles = count($routes) > 0 ? $totalTilesAll / count($routes) : 0;
+        $maxTiles = count($routeStats) > 0 ? max(array_column($routeStats, 'total_tiles')) : 0;
+        $minTiles = count($routeStats) > 0 ? min(array_column($routeStats, 'total_tiles')) : 0;
+        $maxDiff = $maxTiles - $minTiles;
 
         // palette for up to 20 routes
         $routeColors = [
@@ -26,8 +81,27 @@ class RouteController extends Controller
             '#4682B4','#32CD32','#FF6347','#8A2BE2','#2E8B57',
             '#DAA520','#D2691E','#9932CC','#FF4500','#696969'
         ];
-
-        return view('routes.index', compact('routes','routeColors'));
+        
+        $data = compact(
+            'routes',
+            'routeColors',
+            'routeStats',
+            'totalTilesAll',
+            'avgTiles',
+            'maxDiff'
+        );
+        
+        // Store in cache
+        Cache::put($cacheKey, $data, self::CACHE_TTL);
+        
+        // Add query debugging info
+        $queryLog = DB::getQueryLog();
+        $queryCount = count($queryLog);
+        $data['queryCount'] = $queryCount;
+        $data['queryLog'] = $queryLog;
+        $data['fromCache'] = false;
+        
+        return view('routes.index', $data);
     }
 
     public function generate(Request $request)
@@ -145,6 +219,7 @@ class RouteController extends Controller
             ]);
             
             $route->update(['name' => $request->name]);
+            Cache::forget(self::CACHE_KEY . '_index');
             return redirect()->back()->with('success', 'Route naam bijgewerkt.');
         }
         
@@ -159,6 +234,7 @@ class RouteController extends Controller
                 $route->locations()->updateExistingPivot($lId, ['order' => $i + 1]);
             }
             
+            Cache::forget(self::CACHE_KEY . '_index');
             return response()->json(['message' => 'Order updated']);
         }
         
@@ -191,6 +267,9 @@ class RouteController extends Controller
             $to->locations()->attach($loc->id,['order'=>$to->locations()->count()+1]);
             DB::commit();
             
+            // Clear cache
+            Cache::forget(self::CACHE_KEY . '_index');
+            
             $message = ['success'=>true];
             if ($newDiff > $currentDiff && $locTiles > 0) {
                 $message['warning'] = 'Dit verslechtert de verdeling van tegels.';
@@ -211,6 +290,7 @@ class RouteController extends Controller
             $route = Route::findOrFail($request->route_id);
             $this->optimizeRoute($route);
             DB::commit();
+            Cache::forget(self::CACHE_KEY . '_index');
             return response()->json(['success'=>true]);
         } catch (\Exception $e) {
             DB::rollBack();
@@ -225,6 +305,7 @@ class RouteController extends Controller
             $route->delete();
             DB::commit();
             Cache::forget(self::CACHE_KEY);
+            Cache::forget(self::CACHE_KEY . '_index');
             return redirect()->route('routes.index')->with('success','Route deleted.');
         } catch (\Exception $e) {
             DB::rollBack();
@@ -239,6 +320,8 @@ class RouteController extends Controller
             DB::table('route_location')->delete();
             Route::truncate();
             DB::commit();
+            Cache::forget(self::CACHE_KEY);
+            Cache::forget(self::CACHE_KEY . '_index');
             return redirect()->route('routes.index')->with('success','Alle routes verwijderd.');
         } catch (\Exception $e) {
             DB::rollBack();

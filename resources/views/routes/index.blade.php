@@ -7,6 +7,31 @@
       href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
 
 <div class="max-w-[1920px] mx-auto px-4 py-8">
+  {{-- Debug info --}}
+  @if(isset($queryCount))
+  <div class="mb-4 p-4 bg-gray-100 border-l-4 border-gray-500 text-gray-700 rounded-md">
+    <h3 class="font-bold">Debug Info</h3>
+    <div class="grid grid-cols-2 gap-2 mt-2">
+      <div>
+        <p>Database Queries: <span class="font-semibold">{{ $queryCount }}</span></p>
+        @if(isset($fromCache))
+        <p>From Cache: <span class="font-semibold {{ $fromCache ? 'text-green-600' : 'text-red-600' }}">{{ $fromCache ? 'Yes' : 'No' }}</span></p>
+        @endif
+      </div>
+      <div>
+        <p>Routes: <span class="font-semibold">{{ count($routes) }}</span></p>
+        <p>Total Locations: <span class="font-semibold">{{ $routes->sum(function($r) { return $r->locations->count(); }) }}</span></p>
+      </div>
+    </div>
+    @if(app()->environment('local'))
+      <details>
+        <summary class="cursor-pointer text-blue-600 mt-2">Show Queries</summary>
+        <pre class="mt-2 text-xs overflow-auto max-h-48 bg-gray-800 text-white p-3 rounded">{{ json_encode($queryLog, JSON_PRETTY_PRINT) }}</pre>
+      </details>
+    @endif
+  </div>
+  @endif
+
   {{-- success / error alerts --}}
   @if(session('success'))
     <div class="mb-4 p-4 bg-green-100 border-l-4 border-green-500 text-green-700 rounded-md">
@@ -21,18 +46,6 @@
 
   {{-- Tile Distribution Summary --}}
   @if($routes->isNotEmpty())
-    @php
-      $routeTotals = $routes->map(function($route) {
-        return [
-          'name' => $route->name,
-          'total_tiles' => $route->locations->sum('tegels_count'),
-          'location_count' => $route->locations->count()
-        ];
-      });
-      $avgTiles = $routeTotals->avg('total_tiles');
-      $maxDiff = $routeTotals->max('total_tiles') - $routeTotals->min('total_tiles');
-      $totalTiles = $routeTotals->sum('total_tiles');
-    @endphp
     <div class="mb-4 p-4 bg-blue-50 border-l-4 border-blue-300 text-blue-800 rounded-md">
       <div class="flex justify-between items-start">
         <h3 class="font-medium">Verdeling tegels</h3>
@@ -48,7 +61,7 @@
       <div class="mt-2 grid grid-cols-2 md:grid-cols-4 gap-2">
         <div>
           <span class="text-sm text-gray-600">Totaal tegels:</span>
-          <span class="block font-medium">{{ $totalTiles }}</span>
+          <span class="block font-medium">{{ $totalTilesAll }}</span>
         </div>
         <div>
           <span class="text-sm text-gray-600">Gemiddeld per route:</span>
@@ -175,19 +188,15 @@
           </div>
           
           {{-- Total tiles count --}}
-          @php
-            $totalTiles = $route->locations->sum('tegels_count');
-            $tileTypes = $route->locations->where('tegels_count', '>', 0)->groupBy('tegels_type');
-          @endphp
-          @if($totalTiles > 0)
+          @if(isset($routeStats[$route->id]) && $routeStats[$route->id]['total_tiles'] > 0)
           <div class="mt-4 pt-3 border-t border-gray-200">
             <p class="text-sm font-medium">
-              Totaal aantal tegels: <span class="text-blue-600">{{ $totalTiles }}</span>
+              Totaal aantal tegels: <span class="text-blue-600">{{ $routeStats[$route->id]['total_tiles'] }}</span>
             </p>
             <div class="mt-1 flex flex-wrap gap-2">
-              @foreach($tileTypes as $type => $locations)
+              @foreach($routeStats[$route->id]['tiles_by_type'] as $type => $count)
               <span class="text-xs bg-gray-100 px-2 py-1 rounded">
-                {{ $type ?? 'onbekend' }}: {{ $locations->sum('tegels_count') }}
+                {{ $type }}: {{ $count }}
               </span>
               @endforeach
             </div>
@@ -222,43 +231,99 @@
   document.addEventListener('DOMContentLoaded', () => {
     // Mutable copy of routes for map redraws
     let routesData = @json($routes);
+    let mapInitialized = false;
+    let map, polylines = new Map(), markers = new Map();
+    const startPoint = { lat: 51.8372, lng: 5.6697 };
+    
+    // Initialize Leaflet map
+    function initMap() {
+      if (mapInitialized) return;
+      
+      map = L.map('map').setView([startPoint.lat, startPoint.lng], 10);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution:'© OpenStreetMap contributors'
+      }).addTo(map);
+      
+      // Add start marker once
+      L.marker([startPoint.lat, startPoint.lng]).addTo(map)
+       .bindPopup('<strong>Broekstraat 68</strong><br>Nederasselt');
+       
+      mapInitialized = true;
+    }
 
-    // Initialize Leaflet
-    const map = L.map('map').setView([51.8372,5.6697],10);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution:'© OpenStreetMap contributors'
-    }).addTo(map);
-    const start = { lat:51.8372, lng:5.6697 };
-    L.marker([start.lat, start.lng]).addTo(map)
-     .bindPopup('<strong>Broekstraat 68</strong><br>Nederasselt>');
-    const polylines = new Map(), markers = new Map();
+    // Debounce function to limit frequent updates
+    function debounce(func, wait) {
+      let timeout;
+      return function(...args) {
+        const later = () => {
+          clearTimeout(timeout);
+          func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+      };
+    }
 
     function updateMap(routes) {
+      if (!mapInitialized) initMap();
+      
       // clear old
-      polylines.forEach(pl=>pl.remove()); polylines.clear();
-      markers.forEach(arr=>arr.forEach(m=>m.remove())); markers.clear();
-      const bounds = L.latLngBounds([start.lat,start.lng]);
+      polylines.forEach(pl => pl.remove()); 
+      polylines.clear();
+      markers.forEach(arr => arr.forEach(m => m.remove())); 
+      markers.clear();
+      
+      const bounds = L.latLngBounds([startPoint.lat, startPoint.lng]);
       const colors = @json($routeColors);
+      
+      // Batch marker creation for better performance
       routes.forEach((rt, idx) => {
-        const coords = [[start.lat, start.lng]], mlist = [];
+        const coords = [[startPoint.lat, startPoint.lng]], mlist = [];
+        
+        // Create route line first
         rt.locations.forEach(loc => {
-          const m = L.marker([loc.latitude, loc.longitude]).addTo(map)
-                     .bindPopup(`<strong>${loc.address}</strong><br>${loc.city}${loc.tegels_count ? '<br>' + loc.tegels_count + ' ' + (loc.tegels_type || 'tegels') : ''}`);
-          mlist.push(m);
           coords.push([loc.latitude, loc.longitude]);
           bounds.extend([loc.latitude, loc.longitude]);
         });
-        coords.push([start.lat, start.lng]);
+        coords.push([startPoint.lat, startPoint.lng]);
+        
+        // Create and add polyline
         const pl = L.polyline(coords, {
           color: colors[idx % colors.length],
           weight: 3, opacity: 0.7
         }).addTo(map);
-        markers.set(rt.id, mlist);
         polylines.set(rt.id, pl);
+        
+        // Create markers
+        rt.locations.forEach(loc => {
+          const popupContent = `<strong>${loc.address}</strong><br>${loc.city}${loc.tegels_count ? '<br>' + loc.tegels_count + ' ' + (loc.tegels_type || 'tegels') : ''}`;
+          const m = L.marker([loc.latitude, loc.longitude])
+                    .bindPopup(popupContent);
+          m.addTo(map);
+          mlist.push(m);
+        });
+        markers.set(rt.id, mlist);
       });
-      map.fitBounds(bounds, { padding:[50,50] });
+      
+      // Fit bounds
+      map.fitBounds(bounds, { padding: [50, 50] });
     }
-    updateMap(routesData);
+    
+    // Debounced map update
+    const debouncedUpdateMap = debounce(updateMap, 200);
+
+    // Initialize map when visible in viewport
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting && !mapInitialized) {
+          initMap();
+          updateMap(routesData);
+          observer.disconnect();
+        }
+      });
+    }, { threshold: 0.1 });
+    
+    observer.observe(document.getElementById('map'));
 
     // Helpers
     function showWarning(routeId) {
@@ -344,7 +409,7 @@
                 rt.locations = newOrder.map(id =>
                   rt.locations.find(l=>l.id==id)
                 );
-                updateMap(routesData);
+                debouncedUpdateMap(routesData);
               })
               .catch(console.error);
 
