@@ -34,7 +34,17 @@
       $totalTiles = $routeTotals->sum('total_tiles');
     @endphp
     <div class="mb-4 p-4 bg-blue-50 border-l-4 border-blue-300 text-blue-800 rounded-md">
-      <h3 class="font-medium">Verdeling tegels</h3>
+      <div class="flex justify-between items-start">
+        <h3 class="font-medium">Verdeling tegels</h3>
+        <div class="flex items-center space-x-2">
+          <div class="w-6 h-6 rounded-full bg-blue-500 flex items-center justify-center text-white">
+            <i class="fas fa-map-marker-alt text-xs"></i>
+          </div>
+          <div class="text-sm">
+            <span class="font-medium">Broekstraat 68, Nederasselt</span>
+          </div>
+        </div>
+      </div>
       <div class="mt-2 grid grid-cols-2 md:grid-cols-4 gap-2">
         <div>
           <span class="text-sm text-gray-600">Totaal tegels:</span>
@@ -47,6 +57,20 @@
         <div>
           <span class="text-sm text-gray-600">Max verschil:</span>
           <span class="block font-medium">{{ $maxDiff }}</span>
+        </div>
+      </div>
+    </div>
+  @else
+    <div class="mb-4 p-4 bg-blue-50 border-l-4 border-blue-300 text-blue-800 rounded-md">
+      <div class="flex justify-between items-start">
+        <h3 class="font-medium">Startlocatie</h3>
+        <div class="flex items-center space-x-2">
+          <div class="w-6 h-6 rounded-full bg-blue-500 flex items-center justify-center text-white">
+            <i class="fas fa-map-marker-alt text-xs"></i>
+          </div>
+          <div class="text-sm">
+            <span class="font-medium">Broekstraat 68, Nederasselt</span>
+          </div>
         </div>
       </div>
     </div>
@@ -79,20 +103,6 @@
             </button>
           </div>
         </form>
-      </div>
-
-      {{-- Start Location --}}
-      <div class="bg-white rounded-lg shadow p-6">
-        <h2 class="text-lg font-semibold mb-4">Startlocatie</h2>
-        <div class="flex items-center space-x-4 p-4 bg-gray-50 rounded-lg">
-          <div class="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white">
-            <i class="fas fa-map-marker-alt"></i>
-          </div>
-          <div>
-            <h3 class="font-medium">Broekstraat 68</h3>
-            <p class="text-sm text-gray-600">Nederasselt</p>
-          </div>
-        </div>
       </div>
 
       {{-- Routes List --}}
