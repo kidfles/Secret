@@ -6,7 +6,7 @@
 <link rel="stylesheet"
       href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
 
-<div class="container mx-auto px-4 py-8">
+<div class="max-w-[1920px] mx-auto px-4 py-8">
   {{-- success / error alerts --}}
   @if(session('success'))
     <div class="mb-4 p-4 bg-green-100 border-l-4 border-green-500 text-green-700 rounded-md">
@@ -76,8 +76,8 @@
     </div>
   @endif
 
-  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-    <div class="lg:col-span-2 space-y-6">
+  <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
+    <div class="lg:col-span-3 space-y-6">
 
       {{-- Generate & Delete All --}}
       <div class="bg-white rounded-lg shadow p-6">
@@ -106,9 +106,9 @@
       </div>
 
       {{-- Routes Grid --}}
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
         @foreach($routes as $route)
-        <div class="bg-white rounded-lg shadow p-6" data-route-id="{{ $route->id }}">
+        <div class="bg-white rounded-lg shadow p-6 md:p-7" data-route-id="{{ $route->id }}">
           {{-- Header --}}
           <div class="flex justify-between items-center mb-2">
             <div class="flex items-center gap-2 flex-1 min-w-0">
@@ -200,7 +200,7 @@
     </div>
 
     {{-- Map Panel --}}
-    <div class="bg-white rounded-lg shadow p-6 lg:sticky lg:top-6 lg:self-start">
+    <div class="lg:col-span-2 bg-white rounded-lg shadow p-6 lg:sticky lg:top-6 lg:self-start">
       <div id="map" class="h-[500px] lg:h-[calc(100vh-120px)] rounded-lg"></div>
     </div>
   </div>
