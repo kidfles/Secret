@@ -76,8 +76,8 @@
     </div>
   @endif
 
-  <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-    <div class="space-y-6">
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <div class="lg:col-span-2 space-y-6">
 
       {{-- Generate & Delete All --}}
       <div class="bg-white rounded-lg shadow p-6">
@@ -105,104 +105,109 @@
         </form>
       </div>
 
-      {{-- Routes List --}}
-      @foreach($routes as $route)
-      <div class="bg-white rounded-lg shadow p-6" data-route-id="{{ $route->id }}">
-        {{-- Header --}}
-        <div class="flex justify-between items-center mb-2">
-          <div class="flex items-center gap-2">
-            <div class="w-3 h-3 rounded-full"
-                 style="background-color: {{ $routeColors[$loop->index % count($routeColors)] }}"></div>
-            <form action="{{ route('routes.update', $route) }}" method="POST" class="flex-1">
-              @csrf @method('PUT')
-              <input type="text" name="name" value="{{ $route->name }}"
-                     class="w-full px-2 py-1 text-lg font-semibold bg-transparent border-b border-gray-300 focus:border-blue-500"
-                     onblur="this.form.submit()">
-            </form>
-          </div>
-          <div class="flex space-x-2">
-            {{-- Recalculate button now with class and data-attribute --}}
-            <button type="button"
-                    class="js-recalc flex items-center space-x-1 text-blue-600 hover:text-blue-800 focus:outline-none"
-                    data-route-id="{{ $route->id }}"
-                    title="Herbereken route">
-              <i class="fa-solid fa-sync"></i>
-              <span class="hidden md:inline">Herbereken</span>
-            </button>
-
-            {{-- Delete --}}
-            <form action="{{ route('routes.destroy', $route) }}" method="POST">
-              @csrf @method('DELETE')
-              <button onclick="return confirm('Weet je zeker?')"
-                      class="text-red-600 hover:text-red-800 focus:outline-none"
-                      title="Verwijder route">
-                <i class="fa-solid fa-trash"></i>
+      {{-- Routes Grid --}}
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        @foreach($routes as $route)
+        <div class="bg-white rounded-lg shadow p-6" data-route-id="{{ $route->id }}">
+          {{-- Header --}}
+          <div class="flex justify-between items-center mb-2">
+            <div class="flex items-center gap-2 flex-1 min-w-0">
+              <div class="w-3 h-3 rounded-full flex-shrink-0"
+                   style="background-color: {{ $routeColors[$loop->index % count($routeColors)] }}"></div>
+              <form action="{{ route('routes.update', $route) }}" method="POST" class="flex-1 min-w-0">
+                @csrf @method('PUT')
+                <input type="text" name="name" value="{{ $route->name }}" required
+                       class="w-full px-2 py-1 text-lg font-semibold bg-transparent border-b border-gray-300 focus:border-blue-500 focus:outline-none"
+                       onblur="if(this.value.trim()) this.form.submit()">
+                @error('name')
+                <span class="text-xs text-red-600">{{ $message }}</span>
+                @enderror
+              </form>
+            </div>
+            <div class="flex space-x-2 flex-shrink-0 ml-2">
+              {{-- Recalculate button now with class and data-attribute --}}
+              <button type="button"
+                      class="js-recalc flex items-center space-x-1 text-blue-600 hover:text-blue-800 focus:outline-none"
+                      data-route-id="{{ $route->id }}"
+                      title="Herbereken route">
+                <i class="fa-solid fa-sync"></i>
+                <span class="hidden md:inline">Herbereken</span>
               </button>
-            </form>
-          </div>
-        </div>
 
-        {{-- Warning banner --}}
-        <div class="route-warning hidden mb-4 p-3 bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 rounded">
-          Let op: deze volgorde is niet de snelste route. Klik op "Herbereken" om opnieuw te optimaliseren.
-        </div>
-
-        {{-- Draggable list --}}
-        <div class="route-locations space-y-2" id="route-{{ $route->id }}">
-          @foreach($route->locations as $location)
-          <div class="location-item flex items-center space-x-4 p-4 bg-gray-50 rounded-lg"
-               data-location-id="{{ $location->id }}">
-            <div class="w-8 h-8 rounded-full bg-gray-500 flex items-center justify-center text-white">
-              {{ $loop->iteration }}
+              {{-- Delete --}}
+              <form action="{{ route('routes.destroy', $route) }}" method="POST">
+                @csrf @method('DELETE')
+                <button onclick="return confirm('Weet je zeker?')"
+                        class="text-red-600 hover:text-red-800 focus:outline-none"
+                        title="Verwijder route">
+                  <i class="fa-solid fa-trash"></i>
+                </button>
+              </form>
             </div>
-            <div class="flex-1">
-              <h3 class="font-medium">{{ $location->address }}</h3>
-              <p class="text-sm text-gray-600">{{ $location->city }}</p>
-              @if($location->tegels_count > 0)
-              <div class="mt-1 text-xs flex items-center">
-                <span class="bg-blue-100 text-blue-800 px-2 py-0.5 rounded">
-                  {{ $location->tegels_count }} {{ $location->tegels_type ?? 'tegels' }}
-                </span>
+          </div>
+
+          {{-- Warning banner --}}
+          <div class="route-warning hidden mb-4 p-3 bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 rounded">
+            Let op: deze volgorde is niet de snelste route. Klik op "Herbereken" om opnieuw te optimaliseren.
+          </div>
+
+          {{-- Draggable list --}}
+          <div class="route-locations space-y-2" id="route-{{ $route->id }}">
+            @foreach($route->locations as $location)
+            <div class="location-item flex items-center space-x-4 p-4 bg-gray-50 rounded-lg"
+                 data-location-id="{{ $location->id }}">
+              <div class="w-8 h-8 rounded-full bg-gray-500 flex items-center justify-center text-white">
+                {{ $loop->iteration }}
               </div>
-              @endif
+              <div class="flex-1">
+                <h3 class="font-medium">{{ $location->address }}</h3>
+                <p class="text-sm text-gray-600">{{ $location->city }}</p>
+                @if($location->tegels_count > 0)
+                <div class="mt-1 text-xs flex items-center">
+                  <span class="bg-blue-100 text-blue-800 px-2 py-0.5 rounded">
+                    {{ $location->tegels_count }} {{ $location->tegels_type ?? 'tegels' }}
+                  </span>
+                </div>
+                @endif
+              </div>
             </div>
-          </div>
-          @endforeach
-        </div>
-        
-        {{-- Total tiles count --}}
-        @php
-          $totalTiles = $route->locations->sum('tegels_count');
-          $tileTypes = $route->locations->where('tegels_count', '>', 0)->groupBy('tegels_type');
-        @endphp
-        @if($totalTiles > 0)
-        <div class="mt-4 pt-3 border-t border-gray-200">
-          <p class="text-sm font-medium">
-            Totaal aantal tegels: <span class="text-blue-600">{{ $totalTiles }}</span>
-          </p>
-          <div class="mt-1 flex flex-wrap gap-2">
-            @foreach($tileTypes as $type => $locations)
-            <span class="text-xs bg-gray-100 px-2 py-1 rounded">
-              {{ $type ?? 'onbekend' }}: {{ $locations->sum('tegels_count') }}
-            </span>
             @endforeach
           </div>
+          
+          {{-- Total tiles count --}}
+          @php
+            $totalTiles = $route->locations->sum('tegels_count');
+            $tileTypes = $route->locations->where('tegels_count', '>', 0)->groupBy('tegels_type');
+          @endphp
+          @if($totalTiles > 0)
+          <div class="mt-4 pt-3 border-t border-gray-200">
+            <p class="text-sm font-medium">
+              Totaal aantal tegels: <span class="text-blue-600">{{ $totalTiles }}</span>
+            </p>
+            <div class="mt-1 flex flex-wrap gap-2">
+              @foreach($tileTypes as $type => $locations)
+              <span class="text-xs bg-gray-100 px-2 py-1 rounded">
+                {{ $type ?? 'onbekend' }}: {{ $locations->sum('tegels_count') }}
+              </span>
+              @endforeach
+            </div>
+          </div>
+          @endif
         </div>
-        @endif
+        @endforeach
       </div>
-      @endforeach
 
     </div>
 
     {{-- Map Panel --}}
-    <div class="bg-white rounded-lg shadow p-6">
-      <div id="map" class="h-[600px] rounded-lg"></div>
+    <div class="bg-white rounded-lg shadow p-6 lg:sticky lg:top-6 lg:self-start">
+      <div id="map" class="h-[500px] lg:h-[calc(100vh-120px)] rounded-lg"></div>
     </div>
   </div>
 </div>
 
 <style>
-  .route-locations { min-height:50px; }
+  .route-locations { min-height:30px; }
   .location-item { cursor:grab; user-select:none; }
 </style>
 @endsection
@@ -225,7 +230,7 @@
     }).addTo(map);
     const start = { lat:51.8372, lng:5.6697 };
     L.marker([start.lat, start.lng]).addTo(map)
-     .bindPopup('<strong>Broekstraat 68</strong><br>Nederasselt>');
+     .bindPopup('<strong>Broekstraat 68</strong><br>Nederasselt>');
     const polylines = new Map(), markers = new Map();
 
     function updateMap(routes) {

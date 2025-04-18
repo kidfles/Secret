@@ -138,14 +138,31 @@ class RouteController extends Controller
 
     public function update(Request $request, Route $route)
     {
-        $request->validate([
-            'locations'=>'required|array',
-            'locations.*'=>'exists:locations,id'
-        ]);
-        foreach ($request->locations as $i=>$lId) {
-            $route->locations()->updateExistingPivot($lId,['order'=>$i+1]);
+        // Handle route name update from the form
+        if ($request->has('name')) {
+            $request->validate([
+                'name' => 'required|string|max:255'
+            ]);
+            
+            $route->update(['name' => $request->name]);
+            return redirect()->back()->with('success', 'Route naam bijgewerkt.');
         }
-        return response()->json(['message'=>'Order updated']);
+        
+        // Handle location order update via JSON
+        if ($request->has('locations')) {
+            $request->validate([
+                'locations' => 'required|array',
+                'locations.*' => 'exists:locations,id'
+            ]);
+            
+            foreach ($request->locations as $i => $lId) {
+                $route->locations()->updateExistingPivot($lId, ['order' => $i + 1]);
+            }
+            
+            return response()->json(['message' => 'Order updated']);
+        }
+        
+        return redirect()->back()->with('error', 'Geen geldige gegevens ontvangen.');
     }
 
     public function moveLocation(Request $request)
