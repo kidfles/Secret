@@ -19,6 +19,39 @@
     </div>
   @endif
 
+  {{-- Tile Distribution Summary --}}
+  @if($routes->isNotEmpty())
+    @php
+      $routeTotals = $routes->map(function($route) {
+        return [
+          'name' => $route->name,
+          'total_tiles' => $route->locations->sum('tegels_count'),
+          'location_count' => $route->locations->count()
+        ];
+      });
+      $avgTiles = $routeTotals->avg('total_tiles');
+      $maxDiff = $routeTotals->max('total_tiles') - $routeTotals->min('total_tiles');
+      $totalTiles = $routeTotals->sum('total_tiles');
+    @endphp
+    <div class="mb-4 p-4 bg-blue-50 border-l-4 border-blue-300 text-blue-800 rounded-md">
+      <h3 class="font-medium">Verdeling tegels</h3>
+      <div class="mt-2 grid grid-cols-2 md:grid-cols-4 gap-2">
+        <div>
+          <span class="text-sm text-gray-600">Totaal tegels:</span>
+          <span class="block font-medium">{{ $totalTiles }}</span>
+        </div>
+        <div>
+          <span class="text-sm text-gray-600">Gemiddeld per route:</span>
+          <span class="block font-medium">{{ round($avgTiles, 1) }}</span>
+        </div>
+        <div>
+          <span class="text-sm text-gray-600">Max verschil:</span>
+          <span class="block font-medium">{{ $maxDiff }}</span>
+        </div>
+      </div>
+    </div>
+  @endif
+
   <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
     <div class="space-y-6">
 
@@ -69,7 +102,7 @@
         <div class="flex justify-between items-center mb-2">
           <div class="flex items-center gap-2">
             <div class="w-3 h-3 rounded-full"
-                 style="background-color: {{ $routeColors[$loop->index] }}"></div>
+                 style="background-color: {{ $routeColors[$loop->index % count($routeColors)] }}"></div>
             <form action="{{ route('routes.update', $route) }}" method="POST" class="flex-1">
               @csrf @method('PUT')
               <input type="text" name="name" value="{{ $route->name }}"
@@ -101,7 +134,7 @@
 
         {{-- Warning banner --}}
         <div class="route-warning hidden mb-4 p-3 bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 rounded">
-          Let op: deze volgorde is niet de snelste route. Klik op “Herbereken” om opnieuw te optimaliseren.
+          Let op: deze volgorde is niet de snelste route. Klik op "Herbereken" om opnieuw te optimaliseren.
         </div>
 
         {{-- Draggable list --}}
@@ -112,13 +145,40 @@
             <div class="w-8 h-8 rounded-full bg-gray-500 flex items-center justify-center text-white">
               {{ $loop->iteration }}
             </div>
-            <div>
+            <div class="flex-1">
               <h3 class="font-medium">{{ $location->address }}</h3>
               <p class="text-sm text-gray-600">{{ $location->city }}</p>
+              @if($location->tegels_count > 0)
+              <div class="mt-1 text-xs flex items-center">
+                <span class="bg-blue-100 text-blue-800 px-2 py-0.5 rounded">
+                  {{ $location->tegels_count }} {{ $location->tegels_type ?? 'tegels' }}
+                </span>
+              </div>
+              @endif
             </div>
           </div>
           @endforeach
         </div>
+        
+        {{-- Total tiles count --}}
+        @php
+          $totalTiles = $route->locations->sum('tegels_count');
+          $tileTypes = $route->locations->where('tegels_count', '>', 0)->groupBy('tegels_type');
+        @endphp
+        @if($totalTiles > 0)
+        <div class="mt-4 pt-3 border-t border-gray-200">
+          <p class="text-sm font-medium">
+            Totaal aantal tegels: <span class="text-blue-600">{{ $totalTiles }}</span>
+          </p>
+          <div class="mt-1 flex flex-wrap gap-2">
+            @foreach($tileTypes as $type => $locations)
+            <span class="text-xs bg-gray-100 px-2 py-1 rounded">
+              {{ $type ?? 'onbekend' }}: {{ $locations->sum('tegels_count') }}
+            </span>
+            @endforeach
+          </div>
+        </div>
+        @endif
       </div>
       @endforeach
 
@@ -138,7 +198,7 @@
 @endsection
 
 @push('scripts')
-  {{-- SortableJS for drag’n’drop --}}
+  {{-- SortableJS for drag'n'drop --}}
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
   {{-- Leaflet for map --}}
   <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
@@ -168,7 +228,7 @@
         const coords = [[start.lat, start.lng]], mlist = [];
         rt.locations.forEach(loc => {
           const m = L.marker([loc.latitude, loc.longitude]).addTo(map)
-                     .bindPopup(`<strong>${loc.address}</strong><br>${loc.city}`);
+                     .bindPopup(`<strong>${loc.address}</strong><br>${loc.city}${loc.tegels_count ? '<br>' + loc.tegels_count + ' ' + (loc.tegels_type || 'tegels') : ''}`);
           mlist.push(m);
           coords.push([loc.latitude, loc.longitude]);
           bounds.extend([loc.latitude, loc.longitude]);
@@ -214,7 +274,13 @@
         body: JSON.stringify({ location_id:locId, target_route_id:tgtId })
       })
       .then(r => r.json())
-      .then(d => { if (!d.success) throw new Error(d.message); });
+      .then(d => { 
+        if (!d.success) throw new Error(d.message);
+        if (d.warning) {
+          alert(d.warning);
+        }
+        return d;
+      });
     }
     function recalc(routeId, reload=true) {
       console.log('Recalculating route', routeId);
@@ -233,7 +299,7 @@
       });
     }
 
-    // Wire up “Herbereken” buttons
+    // Wire up "Herbereken" buttons
     document.querySelectorAll('.js-recalc').forEach(btn => {
       btn.addEventListener('click', e => {
         const id = btn.dataset.routeId;
@@ -241,7 +307,7 @@
       });
     });
 
-    // SortableJS for drag’n’drop
+    // SortableJS for drag'n'drop
     document.querySelectorAll('.route-locations').forEach(listEl => {
       const routeId = listEl.id.replace('route-','');
       Sortable.create(listEl, {

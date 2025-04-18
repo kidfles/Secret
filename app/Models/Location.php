@@ -20,11 +20,14 @@ class Location extends Model
         'longitude',
         'person_capacity',
         'address',
+        'tegels_count',
+        'tegels_type',
     ];
 
     protected $casts = [
         'latitude' => 'float',
         'longitude' => 'float',
+        'tegels_count' => 'integer',
     ];
 
     public static function rules(): array
@@ -37,6 +40,8 @@ class Location extends Model
             'postal_code' => 'required|string|max:10',
             'latitude' => 'required|numeric',
             'longitude' => 'required|numeric',
+            'tegels_count' => 'nullable|integer|min:0|max:100',
+            'tegels_type' => 'nullable|string|in:pix100,pix25,vlakled,patroon',
         ];
     }
 

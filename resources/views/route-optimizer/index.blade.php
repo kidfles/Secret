@@ -66,6 +66,25 @@
                     <p class="mt-2 text-sm text-gray-500 italic">Standaard is 2 personen per locatie</p>
                 </div>
 
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label for="tegels_count" class="block text-sm font-semibold text-gray-700 mb-1">Aantal Tegels</label>
+                        <input type="number" name="tegels_count" id="tegels_count" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500 bg-gray-50 py-3" value="0" min="0" max="100">
+                        <p class="mt-2 text-sm text-gray-500 italic">Tussen 0 en 100 tegels</p>
+                    </div>
+
+                    <div>
+                        <label for="tegels_type" class="block text-sm font-semibold text-gray-700 mb-1">Type Tegels</label>
+                        <select name="tegels_type" id="tegels_type" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500 bg-gray-50 py-3">
+                            <option value="">-- Selecteer type --</option>
+                            <option value="pix100">Pix100</option>
+                            <option value="pix25">Pix25</option>
+                            <option value="vlakled">Vlakled</option>
+                            <option value="patroon">Patroon</option>
+                        </select>
+                    </div>
+                </div>
+
                 <!-- Hidden fields for coordinates and address -->
                 <input type="hidden" name="latitude" id="latitude">
                 <input type="hidden" name="longitude" id="longitude">
@@ -87,6 +106,14 @@
                                     <p class="text-sm text-gray-600">{{ $location->street }} {{ $location->house_number }}</p>
                                     <p class="text-sm text-gray-600">{{ $location->postal_code }} {{ $location->city }}</p>
                                     <p class="text-sm text-gray-500 mt-2">Capaciteit: {{ $location->person_capacity }} personen</p>
+                                    @if($location->tegels_count > 0)
+                                        <p class="text-sm text-gray-500">
+                                            Tegels: {{ $location->tegels_count }} 
+                                            @if($location->tegels_type)
+                                                ({{ ucfirst($location->tegels_type) }})
+                                            @endif
+                                        </p>
+                                    @endif
                                 </div>
                                 <form action="{{ route('route-optimizer.destroy', $location) }}" method="POST" onsubmit="return confirm('Weet u zeker dat u deze locatie wilt verwijderen?');">
                                     @csrf
@@ -133,6 +160,9 @@
                         <p class="text-sm">${location.street} ${location.house_number}</p>
                         <p class="text-sm">${location.postal_code} ${location.city}</p>
                         <p class="text-sm text-gray-500 mt-1">Capaciteit: ${location.person_capacity} personen</p>
+                        ${location.tegels_count > 0 ? 
+                          `<p class="text-sm text-gray-500">Tegels: ${location.tegels_count} ${location.tegels_type ? `(${location.tegels_type.charAt(0).toUpperCase() + location.tegels_type.slice(1)})` : ''}</p>` 
+                          : ''}
                     </div>
                 `)
                 .addTo(map);

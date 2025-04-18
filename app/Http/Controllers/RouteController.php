@@ -19,10 +19,12 @@ class RouteController extends Controller
             $q->orderBy('route_location.order');
         }])->get();
 
-        // palette for up to 10 routes
+        // palette for up to 20 routes
         $routeColors = [
             '#FF0000','#00FF00','#0000FF','#FFA500','#800080',
-            '#008080','#FFFF00','#FF00FF','#00FFFF','#A52A2A'
+            '#008080','#FFFF00','#FF00FF','#00FFFF','#A52A2A',
+            '#4682B4','#32CD32','#FF6347','#8A2BE2','#2E8B57',
+            '#DAA520','#D2691E','#9932CC','#FF4500','#696969'
         ];
 
         return view('routes.index', compact('routes','routeColors'));
@@ -66,47 +68,61 @@ class RouteController extends Controller
             $unassigned = $locations->pluck('id')->toArray();
             $locationsPerRoute = ceil(count($unassigned) / $numRoutes);
             $createdRoutes = [];
+            
+            // Calculate total number of tiles to aim for equal distribution
+            $totalTiles = $locations->sum('tegels_count');
+            $idealTilesPerRoute = $totalTiles / $numRoutes;
     
-            for ($i = 0; $i < $numRoutes && $unassigned; $i++) {
-                $route = Route::create(['name' => 'Route ' . ($i + 1)]);
-                $sequence = [$startLocation->id];
-    
-                // Nearest‐neighbor on the REAL unassigned list
-                while (
-                    count($sequence) < min($locationsPerRoute + 1, count($unassigned) + 1)
-                    && !empty($unassigned)
-                ) {
-                    $currentId = end($sequence);
-                    $nextId = $this->findNearestLocation($currentId, $unassigned, $distances);
-                    if ($nextId === null) break;
-    
-                    $sequence[] = $nextId;
-                    unset($unassigned[array_search($nextId, $unassigned)]);
-                }
-    
-                // 2‐Opt improvement
-                $sequence = $this->twoOptImprovement($sequence, $distances);
-    
-                // Attach (skip the startLocation->id=0)
-                foreach ($sequence as $order => $locId) {
-                    if ($locId === $startLocation->id) {
-                        continue;
-                    }
-                    $route->locations()->attach($locId, ['order' => $order]);
-                }
-    
-                $createdRoutes[] = $route;
+            // First, create all the routes
+            for ($i = 0; $i < $numRoutes; $i++) {
+                $createdRoutes[] = Route::create(['name' => 'Route ' . ($i + 1)]);
             }
-    
-            // Distribute any leftovers
-            foreach ($unassigned as $locId) {
-                $least = collect($createdRoutes)
-                    ->sortBy(fn($r) => $r->locations()->count())
-                    ->first();
-    
-                $least->locations()->attach($locId, [
-                    'order' => $least->locations()->count() + 1,
+            
+            // Sort locations by tile count (descending) to distribute high-tile locations first
+            $locationsByTiles = $locations->sortByDesc('tegels_count')->values();
+            
+            // Assign locations with highest tile counts first to spread them evenly
+            foreach ($locationsByTiles as $location) {
+                if (empty($unassigned)) break;
+                
+                // Find route with lowest tile count so far
+                $routeTileCounts = collect($createdRoutes)->map(function($route) {
+                    return [
+                        'route' => $route,
+                        'tiles' => $route->locations()->sum('tegels_count'),
+                        'count' => $route->locations()->count()
+                    ];
+                });
+                
+                $targetRoute = $routeTileCounts->sortBy('tiles')->first()['route'];
+                $locId = $location->id;
+                
+                // If this route already has enough locations, find next best route
+                if ($routeTileCounts->sortBy('tiles')->first()['count'] >= $locationsPerRoute) {
+                    $targetRoute = $routeTileCounts->sortBy(function($item) {
+                        return $item['count'] >= $locationsPerRoute ? PHP_INT_MAX : $item['tiles'];
+                    })->first()['route'];
+                }
+                
+                // For the first location in each route, use nearest-neighbor from start
+                if ($targetRoute->locations()->count() === 0) {
+                    $targetRoute->locations()->attach($locId, ['order' => 1]);
+                    unset($unassigned[array_search($locId, $unassigned)]);
+                    continue;
+                }
+                
+                // For subsequent locations, try to optimize both by tile count and distance
+                $lastLocId = $targetRoute->locations()->orderByDesc('route_location.order')->first()->id;
+                
+                $targetRoute->locations()->attach($locId, [
+                    'order' => $targetRoute->locations()->count() + 1
                 ]);
+                unset($unassigned[array_search($locId, $unassigned)]);
+            }
+            
+            // Optimize each route for distance using 2-opt
+            foreach ($createdRoutes as $route) {
+                $this->optimizeRoute($route);
             }
     
             DB::commit();
@@ -143,10 +159,27 @@ class RouteController extends Controller
             $loc  = Location::findOrFail($request->location_id);
             $to   = Route::findOrFail($request->target_route_id);
             $from = Route::whereHas('locations',fn($q)=>$q->where('location_id',$loc->id))->firstOrFail();
+            
+            // Check how this will affect tile distribution
+            $fromTiles = $from->locations()->sum('tegels_count');
+            $toTiles = $to->locations()->sum('tegels_count');
+            $locTiles = $loc->tegels_count;
+            
+            // Calculate if the move will improve or worsen tile distribution
+            $currentDiff = abs($fromTiles - $toTiles);
+            $newDiff = abs(($fromTiles - $locTiles) - ($toTiles + $locTiles));
+            
+            // Perform the move
             $from->locations()->detach($loc->id);
             $to->locations()->attach($loc->id,['order'=>$to->locations()->count()+1]);
             DB::commit();
-            return response()->json(['success'=>true]);
+            
+            $message = ['success'=>true];
+            if ($newDiff > $currentDiff && $locTiles > 0) {
+                $message['warning'] = 'Dit verslechtert de verdeling van tegels.';
+            }
+            
+            return response()->json($message);
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json(['success'=>false,'message'=>$e->getMessage()],422);

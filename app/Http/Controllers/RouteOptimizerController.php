@@ -40,8 +40,20 @@ class RouteOptimizerController extends Controller
                 'postal_code' => 'required|string|max:10',
                 'latitude' => 'required|numeric',
                 'longitude' => 'required|numeric',
-                'person_capacity' => 'required|integer|min:1'
+                'person_capacity' => 'required|integer|min:1',
+                'tegels_count' => 'nullable|integer|min:0|max:100',
+                'tegels_type' => 'nullable|string|in:pix100,pix25,vlakled,patroon',
             ]);
+
+            // If tegels count is set but type is not, clear the count
+            if (!empty($validated['tegels_count']) && empty($validated['tegels_type'])) {
+                $validated['tegels_count'] = 0;
+            }
+            
+            // If tegels type is set but count is 0 or empty, clear the type
+            if ((empty($validated['tegels_count']) || $validated['tegels_count'] == 0) && !empty($validated['tegels_type'])) {
+                $validated['tegels_type'] = null;
+            }
 
             // Generate address field automatically
             $validated['address'] = $validated['street'] . ' ' . $validated['house_number'] . ', ' . $validated['city'];
