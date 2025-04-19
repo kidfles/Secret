@@ -19,6 +19,13 @@
                     </a>
                 </div>
             </div>
+            
+            <div class="flex items-center">
+                <a href="{{ route('day-planner.index') }}" 
+                   class="px-3 py-2 rounded-md text-sm font-medium text-white hover:bg-red-800 transition-colors {{ request()->routeIs('day-planner.*') ? 'bg-red-800' : '' }}">
+                    Dagplanning
+                </a>
+            </div>
         </div>
     </div>
 </nav> 

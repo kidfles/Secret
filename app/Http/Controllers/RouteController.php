@@ -1554,5 +1554,110 @@ class RouteController extends Controller
             return false;
         }
     }
+
+    /**
+     * Generate routes from a day's locations
+     */
+    public function generateFromDay($date)
+    {
+        // Get routes for the specified date
+        $routes = Route::with(['locations' => function($query) {
+            $query->orderBy('route_location.order', 'asc');
+        }])
+        ->where('scheduled_date', $date)
+        ->get();
+        
+        if ($routes->isEmpty()) {
+            return redirect()->route('day-planner.edit', $date)
+                ->with('error', 'Geen routes gevonden voor deze datum. Maak eerst routes aan.');
+        }
+        
+        // Convert to a format for optimization
+        $routeIds = $routes->pluck('id')->toArray();
+        
+        // Get all locations from these routes
+        $locationIds = DB::table('route_location')
+            ->whereIn('route_id', $routeIds)
+            ->pluck('location_id')
+            ->toArray();
+            
+        if (empty($locationIds)) {
+            return redirect()->route('day-planner.edit', $date)
+                ->with('error', 'Geen locaties gevonden voor deze datum. Voeg eerst locaties toe aan de routes.');
+        }
+        
+        // Get all locations
+        $locations = Location::whereIn('id', $locationIds)->get();
+        
+        // Start location (Broekstraat 68)
+        $startLocation = (object) [
+            'id'        => 0,
+            'name'      => 'Broekstraat 68',
+            'latitude'  => 51.8372,
+            'longitude' => 5.6697,
+            'address'   => 'Broekstraat 68, Nederasselt',
+        ];
+        
+        // Build a separate collection for distance matrix
+        $allPoints = $locations->concat([$startLocation]);
+        
+        // Calculate distances between all points
+        $distanceMatrix = $this->calculateDistanceMatrix($allPoints);
+        
+        try {
+            DB::beginTransaction();
+            
+            // Clear existing locations from routes
+            foreach ($routes as $route) {
+                $route->locations()->detach();
+            }
+            
+            // Optimize all routes with the existing number of routes
+            $this->optimizeRoutesGlobally($routes, $locations, $distanceMatrix);
+            
+            DB::commit();
+            
+            return redirect()->route('day-planner.show', $date)
+                ->with('success', 'Routes zijn geoptimaliseerd voor ' . Carbon::parse($date)->format('d-m-Y') . '.');
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return redirect()->route('day-planner.show', $date)
+                ->with('error', 'Er is een fout opgetreden: ' . $e->getMessage());
+        }
+    }
+
+    public function store(Request $request)
+    {
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'date' => 'required|date',
+            // Other validation rules...
+        ]);
+        
+        try {
+            DB::beginTransaction();
+            
+            $route = new Route();
+            $route->name = $validated['name'];
+            $route->date = Carbon::parse($validated['date'])->format('Y-m-d');
+            // Set other fields as needed
+            $route->save();
+            
+            DB::commit();
+            
+            return redirect()->route('routes.show', $route->id)
+                ->with('success', 'Route created successfully.');
+        } catch (\Exception $e) {
+            DB::rollBack();
+            
+            return back()->with('error', 'Error creating route: ' . $e->getMessage())
+                ->withInput();
+        }
+    }
+
+    public function create()
+    {
+        return view('routes.create');
+    }
 }
 

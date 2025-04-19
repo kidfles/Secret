@@ -16,10 +16,19 @@ class Route extends Model
         'start_location_id',
         'end_location_id',
         'start_time', // Default start time for the route
+        'scheduled_date',
+        'date', // Added the date field for the new workflow
+        'is_approved',
+        'approved_at',
+        'approved_by',
     ];
 
     protected $casts = [
         'start_time' => 'datetime',
+        'scheduled_date' => 'date',
+        'date' => 'date',
+        'is_approved' => 'boolean',
+        'approved_at' => 'datetime',
     ];
 
     /**
