@@ -10,10 +10,54 @@
                 <button type="button" class="btn btn-outline-secondary rounded-pill me-2" id="today-btn">
                     <i class="fas fa-calendar-day me-1"></i> Vandaag
                 </button>
-                <a href="{{ route('day-planner.create') }}" class="btn btn-primary rounded-pill">
+                <button type="button" class="btn btn-primary rounded-pill" id="new-planning-btn">
                     <i class="fas fa-plus me-1"></i> Nieuwe Planning
-                </a>
+                </button>
             </div>
+        </div>
+        
+        <!-- New Planning Date Selector (hidden by default) -->
+        <div id="new-planning-panel" class="new-planning-panel shadow-sm mb-4" style="display: none;">
+            <form action="{{ route('day-planner.store') }}" method="POST">
+                @csrf
+                <div class="row align-items-center g-3">
+                    <div class="col-md-5">
+                        <label for="planning-date" class="form-label mb-2 fw-medium">Voor welke datum wil je een planning maken?</label>
+                        <div class="input-group input-group-lg">
+                            <span class="input-group-text bg-light border-end-0">
+                                <i class="fas fa-calendar-alt text-primary"></i>
+                            </span>
+                            <input type="date" class="form-control border-start-0" 
+                                   id="planning-date" name="date" value="{{ date('Y-m-d') }}" required>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label mb-2 fw-medium">Snelkeuze</label>
+                        <div class="quick-date-buttons">
+                            <button type="button" class="btn-quick-date" data-offset="0">
+                                <i class="fas fa-calendar-day"></i>
+                                <span>Vandaag</span>
+                            </button>
+                            <button type="button" class="btn-quick-date" data-offset="1">
+                                <i class="fas fa-sun"></i>
+                                <span>Morgen</span>
+                            </button>
+                            <button type="button" class="btn-quick-date" data-offset="7">
+                                <i class="fas fa-calendar-week"></i>
+                                <span>Volgende week</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="col-md-3 d-flex justify-content-end align-items-end mt-4">
+                        <button type="button" class="btn btn-light rounded-pill px-4 me-2 shadow-sm" id="cancel-new-planning">
+                            <i class="fas fa-times me-1"></i> Annuleren
+                        </button>
+                        <button type="submit" class="btn btn-success rounded-pill px-4 shadow-sm">
+                            <i class="fas fa-check me-1"></i> Aanmaken
+                        </button>
+                    </div>
+                </div>
+            </form>
         </div>
         
         <!-- Unified Modern Search Bar -->
@@ -115,6 +159,67 @@
     /* Header and search styles - Modern Redesign */
     .header-section {
         position: relative;
+    }
+    
+    /* New planning panel styles */
+    .new-planning-panel {
+        background: white;
+        border-radius: 12px;
+        padding: 1.5rem;
+        margin-top: 1rem;
+        position: relative;
+        overflow: hidden;
+        animation: slideDown 0.3s ease;
+        box-shadow: 0 8px 30px rgba(0,0,0,0.08);
+        border: 1px solid rgba(0,0,0,0.03);
+    }
+    
+    @keyframes slideDown {
+        from { opacity: 0; transform: translateY(-15px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+    
+    .quick-date-buttons {
+        display: flex;
+        gap: 10px;
+    }
+    
+    .btn-quick-date {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        background: #f8f9fa;
+        border: 1px solid #e9ecef;
+        border-radius: 12px;
+        padding: 10px 16px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        flex: 1;
+        min-width: 90px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.03);
+    }
+    
+    .btn-quick-date i {
+        font-size: 1.25rem;
+        color: #0d6efd;
+        margin-bottom: 5px;
+    }
+    
+    .btn-quick-date span {
+        font-weight: 500;
+        font-size: 0.9rem;
+        color: #495057;
+    }
+    
+    .btn-quick-date:hover {
+        background: #e9f2ff;
+        border-color: #0d6efd;
+        transform: translateY(-2px);
+        box-shadow: 0 5px 10px rgba(13, 110, 253, 0.1);
+    }
+    
+    .btn-quick-date:active {
+        transform: translateY(0);
     }
     
     .search-container {
@@ -405,6 +510,14 @@
             justify-content: space-between;
         }
         
+        .quick-date-buttons {
+            flex-wrap: wrap;
+        }
+        
+        .btn-quick-date {
+            flex: 1 0 auto;
+        }
+        
         .day-cards {
             grid-template-columns: 1fr;
         }
@@ -426,6 +539,45 @@
         // Initialize Bootstrap components
         const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]');
         const tooltipList = [...tooltipTriggerList].map(tooltipTriggerEl => new bootstrap.Tooltip(tooltipTriggerEl));
+        
+        // New Planning Panel Toggle
+        const newPlanningBtn = document.getElementById('new-planning-btn');
+        const newPlanningPanel = document.getElementById('new-planning-panel');
+        const cancelNewPlanning = document.getElementById('cancel-new-planning');
+        
+        newPlanningBtn.addEventListener('click', function() {
+            newPlanningPanel.style.display = 'block';
+            // Focus the date input
+            setTimeout(() => {
+                document.getElementById('planning-date').focus();
+            }, 300);
+        });
+        
+        cancelNewPlanning.addEventListener('click', function() {
+            newPlanningPanel.style.display = 'none';
+        });
+        
+        // Quick date selection in new planning panel
+        document.querySelectorAll('.btn-quick-date').forEach(button => {
+            button.addEventListener('click', function() {
+                const offset = parseInt(this.getAttribute('data-offset'));
+                const date = new Date();
+                date.setDate(date.getDate() + offset);
+                const formattedDate = date.toISOString().slice(0, 10);
+                document.getElementById('planning-date').value = formattedDate;
+                
+                // Visual feedback - highlight the selected button
+                document.querySelectorAll('.btn-quick-date').forEach(btn => {
+                    btn.classList.remove('active');
+                    btn.style.background = '';
+                    btn.style.borderColor = '';
+                });
+                
+                this.classList.add('active');
+                this.style.background = '#e9f2ff';
+                this.style.borderColor = '#0d6efd';
+            });
+        });
         
         // Date navigation shortcuts
         document.getElementById('today-btn').addEventListener('click', function() {
@@ -554,6 +706,15 @@
             if (searchResults && !searchInput.contains(event.target) && !searchResults.contains(event.target)) {
                 searchResults.remove();
                 searchResults = null;
+            }
+        });
+        
+        // Close new planning panel when clicking outside (but not inside the panel or button)
+        document.addEventListener('click', function(event) {
+            if (newPlanningPanel.style.display === 'block' && 
+                !newPlanningPanel.contains(event.target) && 
+                !newPlanningBtn.contains(event.target)) {
+                newPlanningPanel.style.display = 'none';
             }
         });
     });
