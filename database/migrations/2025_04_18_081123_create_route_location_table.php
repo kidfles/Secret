@@ -11,15 +11,17 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('route_location', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('route_id')->constrained()->onDelete('cascade');
-            $table->foreignId('location_id')->constrained()->onDelete('cascade');
-            $table->integer('order')->nullable();
-            $table->timestamps();
-            
-            $table->unique(['route_id', 'location_id', 'order']);
-        });
+        if (!Schema::hasTable('route_location')) {
+            Schema::create('route_location', function (Blueprint $table) {
+                $table->id();
+                $table->foreignId('route_id')->constrained()->onDelete('cascade');
+                $table->foreignId('location_id')->constrained()->onDelete('cascade');
+                $table->integer('order')->nullable();
+                $table->timestamps();
+                
+                $table->unique(['route_id', 'location_id', 'order']);
+            });
+        }
     }
 
     /**

@@ -68,20 +68,41 @@
 
                 <div class="grid grid-cols-2 gap-4">
                     <div>
-                        <label for="tegels_count" class="block text-sm font-semibold text-gray-700 mb-1">Aantal Tegels</label>
-                        <input type="number" name="tegels_count" id="tegels_count" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500 bg-gray-50 py-3" value="0" min="0" max="100">
-                        <p class="mt-2 text-sm text-gray-500 italic">Tussen 0 en 100 tegels</p>
+                        <label for="tegels" class="block text-sm font-semibold text-gray-700 mb-1">Aantal Tegels</label>
+                        <input type="number" name="tegels" id="tegels" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500 bg-gray-50 py-3" value="0" min="0" onchange="calculateCompletionTime()">
+                        <p class="mt-2 text-sm text-gray-500 italic">Vul het aantal tegels in (0-100)</p>
                     </div>
 
                     <div>
                         <label for="tegels_type" class="block text-sm font-semibold text-gray-700 mb-1">Type Tegels</label>
                         <select name="tegels_type" id="tegels_type" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500 bg-gray-50 py-3">
-                            <option value="">-- Selecteer type --</option>
-                            <option value="pix100">Pix100</option>
-                            <option value="pix25">Pix25</option>
-                            <option value="vlakled">Vlakled</option>
+                            <option value="">Selecteer type</option>
+                            <option value="pix100">PIX 100</option>
+                            <option value="pix25">PIX 25</option>
+                            <option value="vlakled">Vlak LED</option>
                             <option value="patroon">Patroon</option>
                         </select>
+                        <p class="mt-2 text-sm text-gray-500 italic">Selecteer het type tegels</p>
+                    </div>
+                </div>
+
+                <div>
+                    <label for="completion_minutes" class="block text-sm font-semibold text-gray-700 mb-1">Benodigde Tijd (min)</label>
+                    <input type="number" name="completion_minutes" id="completion_minutes" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500 bg-gray-50 py-3" placeholder="Automatisch berekend" readonly>
+                    <p class="mt-2 text-sm text-gray-500 italic">Wordt automatisch berekend</p>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label for="begin_time" class="block text-sm font-semibold text-gray-700 mb-1">Vroegste Aankomsttijd</label>
+                        <input type="time" name="begin_time" id="begin_time" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500 bg-gray-50 py-3">
+                        <p class="mt-2 text-sm text-gray-500 italic">Vroegste tijd dat deze locatie bezocht kan worden</p>
+                    </div>
+
+                    <div>
+                        <label for="end_time" class="block text-sm font-semibold text-gray-700 mb-1">Uiterste Eindtijd</label>
+                        <input type="time" name="end_time" id="end_time" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500 bg-gray-50 py-3">
+                        <p class="mt-2 text-sm text-gray-500 italic">Uiterste tijd dat deze locatie afgerond moet zijn</p>
                     </div>
                 </div>
 
@@ -105,13 +126,46 @@
                                     <h3 class="font-semibold text-lg text-gray-800">{{ $location->name }}</h3>
                                     <p class="text-sm text-gray-600">{{ $location->street }} {{ $location->house_number }}</p>
                                     <p class="text-sm text-gray-600">{{ $location->postal_code }} {{ $location->city }}</p>
-                                    <p class="text-sm text-gray-500 mt-2">Capaciteit: {{ $location->person_capacity }} personen</p>
-                                    @if($location->tegels_count > 0)
+                                    @if($location->person_capacity)
                                         <p class="text-sm text-gray-500">
-                                            Tegels: {{ $location->tegels_count }} 
-                                            @if($location->tegels_type)
-                                                ({{ ucfirst($location->tegels_type) }})
+                                            <span class="bg-red-100 text-red-800 px-2 py-0.5 rounded text-xs">
+                                                {{ $location->person_capacity }} personen
+                                            </span>
+                                        </p>
+                                    @endif
+                                    
+                                    @if($location->tegels > 0)
+                                        <p class="text-sm text-gray-500">
+                                            <span class="bg-blue-100 text-blue-800 px-2 py-0.5 rounded text-xs">
+                                                {{ $location->tegels }} tegels 
+                                                @if($location->tegels_type)
+                                                    ({{ ucfirst($location->tegels_type) }})
+                                                @endif
+                                                - {{ $location->completion_time }} min
+                                            </span>
+                                        </p>
+                                    @endif
+                                    
+                                    @if($location->begin_time || $location->end_time)
+                                        <div class="mt-1 flex flex-wrap gap-2">
+                                            @if($location->begin_time)
+                                                <span class="bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded text-xs">
+                                                    Vanaf: {{ \Carbon\Carbon::parse($location->begin_time)->format('H:i') }}
+                                                </span>
                                             @endif
+                                            @if($location->end_time)
+                                                <span class="bg-red-100 text-red-800 px-2 py-0.5 rounded text-xs">
+                                                    Tot: {{ \Carbon\Carbon::parse($location->end_time)->format('H:i') }}
+                                                </span>
+                                            @endif
+                                        </div>
+                                    @endif
+                                    
+                                    @if($location->completion_minutes)
+                                        <p class="text-sm text-gray-500 mt-1">
+                                            <span class="bg-green-100 text-green-800 px-2 py-0.5 rounded text-xs">
+                                                Benodigd: {{ $location->completion_minutes }} min
+                                            </span>
                                         </p>
                                     @endif
                                 </div>
@@ -142,15 +196,47 @@
 
 <script>
     document.addEventListener('DOMContentLoaded', function() {
-        // Initialize map
-        const map = L.map('map').setView([52.3676, 4.9041], 7); // Center on Netherlands
+        // Initialize the map
+        var map = L.map('map').setView([51.9225, 5.5808], 10);
+        window.map = map;
+        
+        // Add OpenStreetMap tiles
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '© OpenStreetMap contributors'
+            maxZoom: 19,
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         }).addTo(map);
+        
+        // Function to calculate completion time based on number of tegels
+        window.calculateCompletionTime = function() {
+            const tegelsCount = parseInt(document.getElementById('tegels').value) || 0;
+            const baseDuration = 40; // Base 40 minutes
+            const additionalTime = Math.ceil(tegelsCount * 1.5); // 1.5 minutes per tegel, rounded up
+            const completionTime = baseDuration + additionalTime;
+            
+            document.getElementById('completion_minutes').value = completionTime;
+            
+            // Also update the label to show the calculation
+            const completionMinutesField = document.getElementById('completion_minutes');
+            completionMinutesField.setAttribute('placeholder', `${baseDuration} + (${tegelsCount} × 1.5) = ${completionTime}`);
+            
+            // Enable manual override if needed
+            completionMinutesField.readOnly = tegelsCount > 0 ? false : true;
+            
+            return completionTime;
+        };
+        
+        // Calculate initial completion time
+        calculateCompletionTime();
+        
+        // Add event listener to recalculate when tegels input changes
+        document.getElementById('tegels').addEventListener('input', calculateCompletionTime);
+        
+        // Create a marker cluster group
+        var markerCluster = L.markerClusterGroup();
 
         // Add markers for existing locations
         const locations = @json($locations);
-        const markers = [];
+        const markersList = [];
 
         locations.forEach(location => {
             const marker = L.marker([location.latitude, location.longitude])
@@ -160,17 +246,14 @@
                         <p class="text-sm">${location.street} ${location.house_number}</p>
                         <p class="text-sm">${location.postal_code} ${location.city}</p>
                         <p class="text-sm text-gray-500 mt-1">Capaciteit: ${location.person_capacity} personen</p>
-                        ${location.tegels_count > 0 ? 
-                          `<p class="text-sm text-gray-500">Tegels: ${location.tegels_count} ${location.tegels_type ? `(${location.tegels_type.charAt(0).toUpperCase() + location.tegels_type.slice(1)})` : ''}</p>` 
-                          : ''}
                     </div>
                 `)
                 .addTo(map);
-            markers.push(marker);
+            markersList.push(marker);
         });
 
-        if (markers.length > 0) {
-            const bounds = L.latLngBounds(markers.map(marker => marker.getLatLng()));
+        if (markersList.length > 0) {
+            const bounds = L.latLngBounds(markersList.map(marker => marker.getLatLng()));
             map.fitBounds(bounds);
         }
 

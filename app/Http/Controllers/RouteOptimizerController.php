@@ -41,26 +41,48 @@ class RouteOptimizerController extends Controller
                 'latitude' => 'required|numeric',
                 'longitude' => 'required|numeric',
                 'person_capacity' => 'required|integer|min:1',
-                'tegels_count' => 'nullable|integer|min:0|max:100',
+                'tegels' => 'nullable|integer|min:0',
                 'tegels_type' => 'nullable|string|in:pix100,pix25,vlakled,patroon',
+                'begin_time' => 'nullable|date_format:H:i',
+                'end_time' => 'nullable|date_format:H:i|after_or_equal:begin_time',
+                'completion_minutes' => 'nullable|integer|min:0',
             ]);
 
-            // If tegels count is set but type is not, clear the count
-            if (!empty($validated['tegels_count']) && empty($validated['tegels_type'])) {
-                $validated['tegels_count'] = 0;
+            // Convert empty strings to null for time fields
+            if (empty($validated['begin_time'])) {
+                $validated['begin_time'] = null;
             }
             
-            // If tegels type is set but count is 0 or empty, clear the type
-            if ((empty($validated['tegels_count']) || $validated['tegels_count'] == 0) && !empty($validated['tegels_type'])) {
+            if (empty($validated['end_time'])) {
+                $validated['end_time'] = null;
+            }
+            
+            // If tegels is empty or zero, ensure it's set to zero
+            $validated['tegels'] = $validated['tegels'] ?? 0;
+            
+            // If tegels is zero, clear tegels_type
+            if ($validated['tegels'] == 0) {
                 $validated['tegels_type'] = null;
+            }
+            
+            // Auto-calculate completion_minutes if not provided
+            if (empty($validated['completion_minutes']) && $validated['tegels'] > 0) {
+                $baseDuration = 40; // Base 40 minutes
+                $additionalTime = ceil($validated['tegels'] * 1.5); // 1.5 minutes per tegel, rounded up
+                $validated['completion_minutes'] = $baseDuration + $additionalTime;
             }
 
             // Generate address field automatically
             $validated['address'] = $validated['street'] . ' ' . $validated['house_number'] . ', ' . $validated['city'];
 
+            // For backward compatibility with older code, set tegels_count to the same value as tegels
+            $validated['tegels_count'] = $validated['tegels'];
+
             $location = Location::create($validated);
 
+            // Clear all route-related caches to ensure fresh data
             Cache::forget('routes');
+            Cache::forget('routes_index');
 
             return redirect()->route('route-optimizer.index')
                 ->with('success', 'Location added successfully!');

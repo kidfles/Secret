@@ -1,11 +1,10 @@
 @extends('layouts.app')
 
 @section('content')
-{{-- External CSS files with improved loading --}}
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
-<link rel="preload" as="style" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" onload="this.onload=null;this.rel='stylesheet'"/>
-<noscript><link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css"></noscript>
-<link rel="stylesheet" href="{{ asset('css/routes.css') }}">
+<link rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+<link rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
 
 <div class="max-w-[1920px] mx-auto px-4 py-8">
   {{-- Debug info --}}
@@ -165,150 +164,27 @@
             Let op: deze volgorde is niet de snelste route. Klik op "Herbereken" om opnieuw te optimaliseren.
           </div>
 
-          {{-- Draggable list - lazy load for routes with many locations --}}
+          {{-- Draggable list --}}
           <div class="route-locations space-y-2" id="route-{{ $route->id }}">
-            @php $locationCount = count($route->locations); @endphp
-            
-            @if($locationCount > 20)
-              {{-- Show only first 10 locations initially for large routes --}}
-              @foreach($route->locations->take(10) as $location)
-              <div class="location-item flex items-center space-x-4 p-4 bg-gray-50 rounded-lg"
-                   data-location-id="{{ $location->id }}">
-                <div class="w-8 h-8 rounded-full bg-gray-500 flex items-center justify-center text-white">
-                  {{ $loop->iteration }}
-                </div>
-                <div class="flex-1">
-                  <h3 class="font-medium">{{ $location->address }}</h3>
-                  <p class="text-sm text-gray-600">{{ $location->city }}</p>
-                  <div class="mt-1 flex flex-wrap gap-1">
-                    @if($location->tegels > 0)
-                      <span class="bg-blue-100 text-blue-800 px-2 py-0.5 rounded text-xs">
-                        {{ $location->tegels }} tegels
-                      </span>
-                    @elseif($location->tegels_count > 0)
-                      <span class="bg-blue-100 text-blue-800 px-2 py-0.5 rounded text-xs">
-                        {{ $location->tegels_count }} {{ $location->tegels_type ?? 'tegels' }}
-                      </span>
-                    @endif
-
-                    @if($location->begin_time)
-                      <span class="bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded text-xs">
-                        Vanaf: {{ \Carbon\Carbon::parse($location->begin_time)->format('H:i') }}
-                      </span>
-                    @endif
-
-                    @if($location->end_time)
-                      <span class="bg-red-100 text-red-800 px-2 py-0.5 rounded text-xs">
-                        Tot: {{ \Carbon\Carbon::parse($location->end_time)->format('H:i') }}
-                      </span>
-                    @endif
-
-                    @if($location->completion_minutes)
-                      <span class="bg-green-100 text-green-800 px-2 py-0.5 rounded text-xs">
-                        {{ $location->completion_minutes }} min
-                      </span>
-                    @endif
-                  </div>
-                </div>
+            @foreach($route->locations as $location)
+            <div class="location-item flex items-center space-x-4 p-4 bg-gray-50 rounded-lg"
+                 data-location-id="{{ $location->id }}">
+              <div class="w-8 h-8 rounded-full bg-gray-500 flex items-center justify-center text-white">
+                {{ $loop->iteration }}
               </div>
-              @endforeach
-              
-              {{-- Show button to load remaining locations --}}
-              <div class="load-more-container py-2 text-center">
-                <button type="button" class="load-more-btn bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-md text-sm"
-                        data-route-id="{{ $route->id }}">
-                  Laad overige {{ $locationCount - 10 }} locaties
-                </button>
-              </div>
-              
-              {{-- Hidden container for remaining locations --}}
-              <div class="remaining-locations hidden" id="remaining-{{ $route->id }}">
-                @foreach($route->locations->slice(10) as $location)
-                <div class="location-item flex items-center space-x-4 p-4 bg-gray-50 rounded-lg"
-                     data-location-id="{{ $location->id }}">
-                  <div class="w-8 h-8 rounded-full bg-gray-500 flex items-center justify-center text-white">
-                    {{ $loop->iteration + 10 }}
-                  </div>
-                  <div class="flex-1">
-                    <h3 class="font-medium">{{ $location->address }}</h3>
-                    <p class="text-sm text-gray-600">{{ $location->city }}</p>
-                    <div class="mt-1 flex flex-wrap gap-1">
-                      @if($location->tegels > 0)
-                        <span class="bg-blue-100 text-blue-800 px-2 py-0.5 rounded text-xs">
-                          {{ $location->tegels }} tegels
-                        </span>
-                      @elseif($location->tegels_count > 0)
-                        <span class="bg-blue-100 text-blue-800 px-2 py-0.5 rounded text-xs">
-                          {{ $location->tegels_count }} {{ $location->tegels_type ?? 'tegels' }}
-                        </span>
-                      @endif
-
-                      @if($location->begin_time)
-                        <span class="bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded text-xs">
-                          Vanaf: {{ \Carbon\Carbon::parse($location->begin_time)->format('H:i') }}
-                        </span>
-                      @endif
-
-                      @if($location->end_time)
-                        <span class="bg-red-100 text-red-800 px-2 py-0.5 rounded text-xs">
-                          Tot: {{ \Carbon\Carbon::parse($location->end_time)->format('H:i') }}
-                        </span>
-                      @endif
-
-                      @if($location->completion_minutes)
-                        <span class="bg-green-100 text-green-800 px-2 py-0.5 rounded text-xs">
-                          {{ $location->completion_minutes }} min
-                        </span>
-                      @endif
-                    </div>
-                  </div>
+              <div class="flex-1">
+                <h3 class="font-medium">{{ $location->address }}</h3>
+                <p class="text-sm text-gray-600">{{ $location->city }}</p>
+                @if($location->tegels_count > 0)
+                <div class="mt-1 text-xs flex items-center">
+                  <span class="bg-blue-100 text-blue-800 px-2 py-0.5 rounded">
+                    {{ $location->tegels_count }} {{ $location->tegels_type ?? 'tegels' }}
+                  </span>
                 </div>
-                @endforeach
+                @endif
               </div>
-            @else
-              {{-- Regular display for routes with fewer locations --}}
-              @foreach($route->locations as $location)
-              <div class="location-item flex items-center space-x-4 p-4 bg-gray-50 rounded-lg"
-                   data-location-id="{{ $location->id }}">
-                <div class="w-8 h-8 rounded-full bg-gray-500 flex items-center justify-center text-white">
-                  {{ $loop->iteration }}
-                </div>
-                <div class="flex-1">
-                  <h3 class="font-medium">{{ $location->address }}</h3>
-                  <p class="text-sm text-gray-600">{{ $location->city }}</p>
-                  <div class="mt-1 flex flex-wrap gap-1">
-                    @if($location->tegels > 0)
-                      <span class="bg-blue-100 text-blue-800 px-2 py-0.5 rounded text-xs">
-                        {{ $location->tegels }} tegels
-                      </span>
-                    @elseif($location->tegels_count > 0)
-                      <span class="bg-blue-100 text-blue-800 px-2 py-0.5 rounded text-xs">
-                        {{ $location->tegels_count }} {{ $location->tegels_type ?? 'tegels' }}
-                      </span>
-                    @endif
-
-                    @if($location->begin_time)
-                      <span class="bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded text-xs">
-                        Vanaf: {{ \Carbon\Carbon::parse($location->begin_time)->format('H:i') }}
-                      </span>
-                    @endif
-
-                    @if($location->end_time)
-                      <span class="bg-red-100 text-red-800 px-2 py-0.5 rounded text-xs">
-                        Tot: {{ \Carbon\Carbon::parse($location->end_time)->format('H:i') }}
-                      </span>
-                    @endif
-
-                    @if($location->completion_minutes)
-                      <span class="bg-green-100 text-green-800 px-2 py-0.5 rounded text-xs">
-                        {{ $location->completion_minutes }} min
-                      </span>
-                    @endif
-                  </div>
-                </div>
-              </div>
-              @endforeach
-            @endif
+            </div>
+            @endforeach
           </div>
           
           {{-- Total tiles count --}}
@@ -339,18 +215,217 @@
   </div>
 </div>
 
-{{-- Pass data to JavaScript --}}
-<script>
-  window.routesData = @json($routes);
-  window.routeColors = @json($routeColors);
-</script>
+<style>
+  .route-locations { min-height:30px; }
+  .location-item { cursor:grab; user-select:none; }
+</style>
 @endsection
 
 @push('scripts')
-  {{-- External libraries with defer for better performance --}}
-  <script defer src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
-  <script defer src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
-  
-  {{-- Our application JS --}}
-  <script defer src="{{ asset('js/routes.js') }}"></script>
+  {{-- SortableJS for drag'n'drop --}}
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+  {{-- Leaflet for map --}}
+  <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+
+  <script>
+  document.addEventListener('DOMContentLoaded', () => {
+    // Mutable copy of routes for map redraws
+    let routesData = @json($routes);
+    let mapInitialized = false;
+    let map, polylines = new Map(), markers = new Map();
+    const startPoint = { lat: 51.8372, lng: 5.6697 };
+    
+    // Initialize Leaflet map
+    function initMap() {
+      if (mapInitialized) return;
+      
+      map = L.map('map').setView([startPoint.lat, startPoint.lng], 10);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution:'© OpenStreetMap contributors'
+      }).addTo(map);
+      
+      // Add start marker once
+      L.marker([startPoint.lat, startPoint.lng]).addTo(map)
+       .bindPopup('<strong>Broekstraat 68</strong><br>Nederasselt');
+       
+      mapInitialized = true;
+    }
+
+    // Debounce function to limit frequent updates
+    function debounce(func, wait) {
+      let timeout;
+      return function(...args) {
+        const later = () => {
+          clearTimeout(timeout);
+          func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+      };
+    }
+
+    function updateMap(routes) {
+      if (!mapInitialized) initMap();
+      
+      // clear old
+      polylines.forEach(pl => pl.remove()); 
+      polylines.clear();
+      markers.forEach(arr => arr.forEach(m => m.remove())); 
+      markers.clear();
+      
+      const bounds = L.latLngBounds([startPoint.lat, startPoint.lng]);
+      const colors = @json($routeColors);
+      
+      // Batch marker creation for better performance
+      routes.forEach((rt, idx) => {
+        const coords = [[startPoint.lat, startPoint.lng]], mlist = [];
+        
+        // Create route line first
+        rt.locations.forEach(loc => {
+          coords.push([loc.latitude, loc.longitude]);
+          bounds.extend([loc.latitude, loc.longitude]);
+        });
+        coords.push([startPoint.lat, startPoint.lng]);
+        
+        // Create and add polyline
+        const pl = L.polyline(coords, {
+          color: colors[idx % colors.length],
+          weight: 3, opacity: 0.7
+        }).addTo(map);
+        polylines.set(rt.id, pl);
+        
+        // Create markers
+        rt.locations.forEach(loc => {
+          const popupContent = `<strong>${loc.address}</strong><br>${loc.city}${loc.tegels_count ? '<br>' + loc.tegels_count + ' ' + (loc.tegels_type || 'tegels') : ''}`;
+          const m = L.marker([loc.latitude, loc.longitude])
+                    .bindPopup(popupContent);
+          m.addTo(map);
+          mlist.push(m);
+        });
+        markers.set(rt.id, mlist);
+      });
+      
+      // Fit bounds
+      map.fitBounds(bounds, { padding: [50, 50] });
+    }
+    
+    // Debounced map update
+    const debouncedUpdateMap = debounce(updateMap, 200);
+
+    // Initialize map when visible in viewport
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting && !mapInitialized) {
+          initMap();
+          updateMap(routesData);
+          observer.disconnect();
+        }
+      });
+    }, { threshold: 0.1 });
+    
+    observer.observe(document.getElementById('map'));
+
+    // Helpers
+    function showWarning(routeId) {
+      document.querySelector(`[data-route-id="${routeId}"] .route-warning`)
+              .classList.remove('hidden');
+    }
+    function reorderRoute(routeId, newOrder) {
+      return fetch(`/routes/${routeId}`, {
+        method:'PUT',
+        headers:{
+          'Content-Type':'application/json',
+          'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+        },
+        body: JSON.stringify({ locations:newOrder })
+      })
+      .then(res => {
+        if (!res.ok) throw new Error('Order save failed');
+        showWarning(routeId);
+      });
+    }
+    function moveLocation(locId, srcId, tgtId) {
+      return fetch(`/routes/move-location`, {
+        method:'POST',
+        headers:{
+          'Content-Type':'application/json',
+          'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+        },
+        body: JSON.stringify({ location_id:locId, target_route_id:tgtId })
+      })
+      .then(r => r.json())
+      .then(d => { 
+        if (!d.success) throw new Error(d.message);
+        if (d.warning) {
+          alert(d.warning);
+        }
+        return d;
+      });
+    }
+    function recalc(routeId, reload=true) {
+      console.log('Recalculating route', routeId);
+      return fetch(`/routes/recalculate`, {
+        method:'POST',
+        headers:{
+          'Content-Type':'application/json',
+          'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+        },
+        body: JSON.stringify({ route_id:routeId })
+      })
+      .then(r => r.json())
+      .then(d => {
+        if (!d.success) throw new Error(d.message);
+        if (reload) location.reload();
+      });
+    }
+
+    // Wire up "Herbereken" buttons
+    document.querySelectorAll('.js-recalc').forEach(btn => {
+      btn.addEventListener('click', e => {
+        const id = btn.dataset.routeId;
+        recalc(id);
+      });
+    });
+
+    // SortableJS for drag'n'drop
+    document.querySelectorAll('.route-locations').forEach(listEl => {
+      const routeId = listEl.id.replace('route-','');
+      Sortable.create(listEl, {
+        group: 'routes',
+        animation: 150,
+        onEnd: evt => {
+          const srcId = evt.from.id.replace('route-','');
+          const tgtId = evt.to.id.replace('route-','');
+          const locId = evt.item.dataset.locationId;
+          const newOrder = Array.from(evt.to.children)
+                                .map(ch => ch.dataset.locationId);
+
+          if (srcId === tgtId) {
+            // same-route: reorder + warning + map redraw
+            reorderRoute(srcId, newOrder)
+              .then(() => {
+                // update client copy & redraw
+                const rt = routesData.find(r=>r.id==srcId);
+                rt.locations = newOrder.map(id =>
+                  rt.locations.find(l=>l.id==id)
+                );
+                debouncedUpdateMap(routesData);
+              })
+              .catch(console.error);
+
+          } else {
+            // cross-route: move, auto-recalc both, then reload
+            moveLocation(locId, srcId, tgtId)
+              .then(()=>Promise.all([
+                recalc(srcId,false),
+                recalc(tgtId,false)
+              ]))
+              .then(()=>location.reload())
+              .catch(console.error);
+          }
+        }
+      });
+    });
+  });
+  </script>
 @endpush

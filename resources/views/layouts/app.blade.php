@@ -7,16 +7,12 @@
 
     <title>{{ config('app.name', 'Route Optimizer') }}</title>
 
-    <!-- Preload critical assets -->
-    <link rel="preload" href="{{ asset('css/app.css') }}" as="style">
-    <link rel="preload" href="{{ asset('js/app.js') }}" as="script">
-    
     <!-- Fonts - Load only one font family to reduce overhead -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
-    <!-- Scripts -->
+    <!-- Scripts and Styles -->
     @vite(['resources/css/app.css', 'resources/js/app.js'])
     
     <!-- Load Leaflet asynchronously -->

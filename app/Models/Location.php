@@ -22,12 +22,20 @@ class Location extends Model
         'address',
         'tegels_count',
         'tegels_type',
+        'begin_time',
+        'end_time',
+        'completion_minutes',
+        'tegels',
     ];
 
     protected $casts = [
         'latitude' => 'float',
         'longitude' => 'float',
         'tegels_count' => 'integer',
+        'completion_minutes' => 'integer',
+        'begin_time' => 'datetime',
+        'end_time' => 'datetime',
+        'tegels' => 'integer',
     ];
 
     public static function rules(): array
@@ -42,13 +50,40 @@ class Location extends Model
             'longitude' => 'required|numeric',
             'tegels_count' => 'nullable|integer|min:0|max:100',
             'tegels_type' => 'nullable|string|in:pix100,pix25,vlakled,patroon',
+            'begin_time' => 'nullable|date_format:H:i',
+            'end_time' => 'nullable|date_format:H:i|after_or_equal:begin_time',
+            'tegels' => 'nullable|integer|min:0',
+            'completion_minutes' => 'nullable|integer|min:0',
         ];
+    }
+
+    /**
+     * Calculate the estimated duration to complete this location
+     * Formula: 40 minutes + (1.5 × number of tegels)
+     *
+     * @return int Duration in minutes
+     */
+    public function getCompletionTimeAttribute(): int
+    {
+        // If there's a manually set duration, return that
+        if ($this->completion_minutes) {
+            return $this->completion_minutes;
+        }
+        
+        // Otherwise calculate based on the formula
+        $baseDuration = 40; // Base 40 minutes
+        
+        // Use the new tegels field if available, otherwise fall back to tegels_count
+        $tegelCount = $this->tegels ?? $this->tegels_count ?? 0;
+        $additionalTime = ceil($tegelCount * 1.5); // 1.5 minutes per tegel, rounded up
+        
+        return $baseDuration + $additionalTime;
     }
 
     public function routes()
     {
         return $this->belongsToMany(Route::class)
-            ->withPivot('order')
+            ->withPivot('order', 'arrival_time', 'completion_time', 'travel_time')
             ->orderBy('route_location.order');
     }
 }
