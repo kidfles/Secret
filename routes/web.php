@@ -19,6 +19,7 @@ Route::get('routes', [RouteController::class, 'index'])->name('routes.index');
 Route::post('routes/generate', [RouteController::class, 'generate'])->name('routes.generate');
 Route::post('/routes/move-location', [RouteController::class, 'moveLocation'])->name('routes.move-location');
 Route::post('/routes/recalculate', [RouteController::class, 'recalculateRoute'])->name('routes.recalculate');
+Route::post('/routes/optimize-all', [RouteController::class, 'optimizeAllRoutes'])->name('routes.optimize-all');
 Route::delete('/routes/delete-all', [RouteController::class, 'deleteAll'])->name('routes.deleteAll');
 Route::delete('/locations/delete-all', [LocationController::class, 'deleteAll'])->name('locations.deleteAll');
 Route::delete('routes/{route}', [RouteController::class, 'destroy'])->name('routes.destroy');

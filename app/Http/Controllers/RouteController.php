@@ -7,6 +7,9 @@ use App\Models\Location;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
+use Carbon\Carbon;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 
 class RouteController extends Controller
 {
@@ -149,7 +152,7 @@ class RouteController extends Controller
         ];
     
         // Fetch locations efficiently with single query
-        $locations = Location::select(['id', 'name', 'latitude', 'longitude', 'address', 'tegels', 'tegels_count', 'tegels_type'])->get();
+        $locations = Location::select(['id', 'name', 'latitude', 'longitude', 'address', 'tegels', 'tegels_count', 'tegels_type', 'begin_time', 'end_time', 'completion_minutes'])->get();
     
         if ($locations->isEmpty()) {
             return redirect()->back()->with('error', 'No locations available to generate routes.');
@@ -263,14 +266,20 @@ class RouteController extends Controller
             foreach ($createdRoutes as $route) {
                 $this->optimizeRoute($route);
             }
+            
+            // Apply the new cross-route optimization algorithm
+            $this->optimizeRoutesGlobally($createdRoutes, $locations, $distances);
     
             DB::commit();
             
             // Clear the cache
             Cache::forget(self::CACHE_KEY . '_index');
             
+            // Further optimize all routes automatically using the optimizeAllRoutes method
+            $optimizeResult = $this->optimizeAllRoutes(false);
+            
             return redirect()->route('routes.index')
-                             ->with('success', 'Routes generated successfully.');
+                             ->with('success', 'Routes generated and globally optimized successfully.');
         } catch (\Exception $e) {
             DB::rollBack();
             return redirect()->back()
@@ -351,19 +360,140 @@ class RouteController extends Controller
         }
     }
 
-    public function recalculateRoute(Request $request)
+    /**
+     * Recalculate the route
+     *
+     * @param  int  $id
+     * @return \Illuminate\Http\Response
+     */
+    public function recalculateRoute(int $id)
     {
-        $request->validate(['route_id'=>'required|exists:routes,id']);
         try {
-            DB::beginTransaction();
-            $route = Route::findOrFail($request->route_id);
-            $this->optimizeRoute($route);
-            DB::commit();
-            Cache::forget(self::CACHE_KEY . '_index');
-            return response()->json(['success'=>true]);
+            $route = Route::findOrFail($id);
+            
+            // Check if route belongs to authenticated user
+            if ($route->user_id !== auth()->id()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized access to route'
+                ], 403);
+            }
+            
+            $locationIds = $route->locations()->pluck('id')->toArray();
+            
+            if (count($locationIds) < 2) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'At least two locations are required for recalculation'
+                ], 400);
+            }
+            
+            // Get all locations with their details
+            $locations = Location::whereIn('id', $locationIds)->get()->keyBy('id')->toArray();
+            
+            // Calculate distance matrix
+            $distanceMatrix = [];
+            foreach ($locationIds as $fromId) {
+                $distanceMatrix[$fromId] = [];
+                foreach ($locationIds as $toId) {
+                    if ($fromId === $toId) {
+                        $distanceMatrix[$fromId][$toId] = 0;
+                    } else {
+                        $fromLocation = $locations[$fromId];
+                        $toLocation = $locations[$toId];
+                        $distanceMatrix[$fromId][$toId] = $this->calculateDistance(
+                            $fromLocation['latitude'], 
+                            $fromLocation['longitude'], 
+                            $toLocation['latitude'], 
+                            $toLocation['longitude']
+                        );
+                    }
+                }
+            }
+            
+            $bestRoute = null;
+            $bestValue = PHP_FLOAT_MAX;
+            
+            if (count($locationIds) <= 8) {
+                // For small routes, try all permutations
+                $firstId = $locationIds[0]; // Keep first location fixed
+                $permutableIds = array_slice($locationIds, 1);
+                
+                $permutations = $this->generatePermutations($permutableIds);
+                
+                foreach ($permutations as $permutation) {
+                    $route = array_merge([$firstId], $permutation);
+                    $value = $this->evaluateSolution([$route], $distanceMatrix, $locations);
+                    
+                    if ($value < $bestValue) {
+                        $bestValue = $value;
+                        $bestRoute = $route;
+                    }
+                }
+            } else {
+                // For larger routes, use initial greedy solution + 2-opt
+                // Start with the first location
+                $currentId = $locationIds[0];
+                $remainingIds = array_diff($locationIds, [$currentId]);
+                $route = [$currentId];
+                
+                // Build initial greedy solution
+                while (!empty($remainingIds)) {
+                    $bestNextId = null;
+                    $bestDistance = PHP_FLOAT_MAX;
+                    
+                    foreach ($remainingIds as $nextId) {
+                        $distance = $distanceMatrix[$currentId][$nextId];
+                        if ($distance < $bestDistance) {
+                            $bestDistance = $distance;
+                            $bestNextId = $nextId;
+                        }
+                    }
+                    
+                    $route[] = $bestNextId;
+                    $currentId = $bestNextId;
+                    $remainingIds = array_diff($remainingIds, [$bestNextId]);
+                }
+                
+                // Apply 2-opt improvement
+                $bestRoute = $this->twoOptImprovement($route, $distanceMatrix);
+                $bestValue = $this->evaluateSolution([$bestRoute], $distanceMatrix, $locations);
+            }
+            
+            if ($bestRoute) {
+                DB::beginTransaction();
+                try {
+                    // Clear existing order values
+                    $route->locations()->update(['order' => null]);
+                    
+                    // Set new order for each location
+                    foreach ($bestRoute as $index => $locationId) {
+                        $route->locations()->updateExistingPivot($locationId, ['order' => $index]);
+                    }
+                    
+                    DB::commit();
+                    
+                    return response()->json([
+                        'success' => true,
+                        'message' => 'Route recalculated successfully',
+                        'route' => $bestRoute,
+                        'value' => $bestValue
+                    ]);
+                } catch (\Exception $e) {
+                    DB::rollBack();
+                    throw $e;
+                }
+            }
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Could not find an optimal route'
+            ], 500);
         } catch (\Exception $e) {
-            DB::rollBack();
-            return response()->json(['success'=>false,'message'=>$e->getMessage()],422);
+            return response()->json([
+                'success' => false,
+                'message' => 'Error recalculating route: ' . $e->getMessage()
+            ], 500);
         }
     }
 
@@ -484,73 +614,80 @@ class RouteController extends Controller
         return $best;
     }
 
-    private function twoOptImprovement(array $route, array $distances)
+    /**
+     * Improve a route using 2-opt algorithm
+     *
+     * @param array $route Array of location IDs
+     * @param array $distanceMatrix Distance matrix
+     * @return array Improved route
+     */
+    private function twoOptImprovement($route, $distanceMatrix)
     {
+        $n = count($route);
         $improved = true;
-        $best    = $this->calculateRouteDistance($route, $distances);
-        $maxIterations = 50; // Reduce max iterations limit
-        $iterationCount = 0;
-        $improvementThreshold = 0.01; // Stop if improvements are minimal
-
-        while ($improved && $iterationCount < $maxIterations) {
+        $iterations = 0;
+        $maxIterations = 1000; // Prevent infinite loops
+        
+        while ($improved && $iterations < $maxIterations) {
             $improved = false;
-            $iterationCount++;
-            $startDistance = $best;
+            $iterations++;
             
-            // Sample fewer edges for large routes
-            $step = count($route) > 20 ? 2 : 1;
-            
-            for ($i = 0; $i < count($route) - 2; $i += $step) {
-                // Limit inner loop iterations for performance
-                // Only check a window of potential swaps
-                $maxJ = min(count($route), $i + 15);
-                for ($j = $i + 2; $j < $maxJ; $j += $step) {
-                    $delta = $this->calculateTwoOptDelta($route, $i, $j, $distances);
-                    if ($delta < 0) {
-                        $this->reverseRouteSegment($route, $i+1, $j);
-                        $best += $delta;
+            for ($i = 0; $i < $n - 2; $i++) {
+                for ($j = $i + 2; $j < $n; $j++) {
+                    // Calculate current cost
+                    $current = $distanceMatrix[$route[$i]][$route[$i+1]] + 
+                               $distanceMatrix[$route[$j-1]][$route[$j]];
+                    
+                    // Calculate potential swap cost
+                    $swapped = $distanceMatrix[$route[$i]][$route[$j-1]] + 
+                               $distanceMatrix[$route[$i+1]][$route[$j]];
+                    
+                    // If swap is better, perform it
+                    if ($swapped < $current) {
+                        // Reverse the segment between i+1 and j-1
+                        $segment = array_slice($route, $i + 1, $j - $i - 1);
+                        $segment = array_reverse($segment);
+                        
+                        // Replace the segment in the route
+                        array_splice($route, $i + 1, $j - $i - 1, $segment);
+                        
                         $improved = true;
                     }
                 }
             }
-            
-            // If improvement is minimal, stop early
-            if ($improved && abs(($startDistance - $best) / $startDistance) < $improvementThreshold) {
-                break;
-            }
         }
-
+        
         return $route;
     }
 
-    private function calculateRouteDistance($route, $distances)
+    /**
+     * Generate all permutations of an array
+     *
+     * @param array $items Array of items
+     * @return array Array of permutations
+     */
+    private function generatePermutations($items) 
     {
-        $sum = 0;
-        for ($i = 0; $i < count($route) - 1; $i++) {
-            $sum += $distances[$route[$i]][$route[$i+1]] ?? 0;
+        if (count($items) <= 1) {
+            return [$items];
         }
-        return $sum;
-    }
-
-    private function calculateTwoOptDelta($route, $i, $j, $distances)
-    {
-        // remove edges (i→i+1) and (j-1→j), add (i→j-1) and (i+1→j)
-        $a = $route[$i];
-        $b = $route[$i+1];
-        $c = $route[$j-1];
-        $d = $route[$j];
-        $old = ($distances[$a][$b] ?? 0) + ($distances[$c][$d] ?? 0);
-        $new = ($distances[$a][$c] ?? 0) + ($distances[$b][$d] ?? 0);
-        return $new - $old;
-    }
-
-    private function reverseRouteSegment(array &$route, int $start, int $end)
-    {
-        while ($start < $end) {
-            [$route[$start], $route[$end]] = [$route[$end], $route[$start]];
-            $start++;
-            $end--;
+        
+        $result = [];
+        
+        // Keep the first item fixed and permute the rest
+        $firstItem = $items[0];
+        $remaining = array_slice($items, 1);
+        
+        // Get permutations of remaining items
+        $permutationsOfRemaining = $this->generatePermutations($remaining);
+        
+        // Insert first item in every possible position
+        foreach ($permutationsOfRemaining as $permutation) {
+            // Keep first item at the beginning (start point)
+            $result[] = array_merge([$firstItem], $permutation);
         }
+        
+        return $result;
     }
 
     private function optimizeRoute(Route $route)
@@ -583,4 +720,839 @@ class RouteController extends Controller
                   ->updateExistingPivot($locId, ['order' => $i + 1]);
         }
     }
+
+    /**
+     * Optimize routes globally by moving locations between routes
+     * 
+     * @param Collection $routes The routes to optimize
+     * @param Collection $locations All locations across all routes
+     * @param array $distanceMatrix Distance matrix between locations
+     * @return array Result of optimization including optimized routes and stats
+     */
+    private function optimizeRoutesGlobally($routes, $locations, $distanceMatrix)
+    {
+        // Create a map of locations by ID for quick lookup
+        $locationsById = [];
+        foreach ($locations as $location) {
+            $locationsById[$location->id] = $location;
+        }
+        
+        // Working copy of routes
+        $workingRoutes = [];
+        foreach ($routes as $route) {
+            $routeLocationsIds = $route->locations->pluck('id')->toArray();
+            
+            // Calculate total tile count and minutes for this route
+            $totalTiles = 0;
+            $totalMinutes = 0;
+            foreach ($route->locations as $location) {
+                $totalTiles += $location->tegels ?? 0;
+                $totalMinutes += $location->completion_minutes ?? 0;
+            }
+            
+            $workingRoutes[$route->id] = [
+                'id' => $route->id,
+                'order' => $routeLocationsIds,
+                'capacity' => $route->capacity ?? PHP_INT_MAX, // If no capacity defined, use max int
+                'current_tiles' => $totalTiles,
+                'current_completion_minutes' => $totalMinutes,
+                'start_time' => $route->start_time ?? '08:00:00',
+                'max_duration_minutes' => $route->max_duration_minutes ?? 480, // Default to 8 hours if not set
+            ];
+        }
+        
+        // Initial temperature for simulated annealing
+        $temperature = 100.0;
+        $coolingRate = 0.99;
+        $iterationLimit = 1000;
+        $noImprovementLimit = 100;
+        
+        // Calculate initial total distance
+        $initialTotalDistance = $this->calculateTotalDistance($workingRoutes, $locationsById, $distanceMatrix);
+        $bestDistance = $initialTotalDistance;
+        $bestRoutes = $workingRoutes;
+        
+        // Stats
+        $locationsMovedCount = 0;
+        $noImprovementCounter = 0;
+        
+        // Main optimization loop
+        for ($iteration = 0; $iteration < $iterationLimit; $iteration++) {
+            // Get two different random routes
+            $routeIds = array_keys($workingRoutes);
+            if (count($routeIds) < 2) break;
+            
+            $srcRouteKey = $routeIds[array_rand($routeIds)];
+            do {
+                $dstRouteKey = $routeIds[array_rand($routeIds)];
+            } while ($srcRouteKey == $dstRouteKey);
+            
+            $srcRoute = &$workingRoutes[$srcRouteKey];
+            $dstRoute = &$workingRoutes[$dstRouteKey];
+            
+            // Skip if source route is empty
+            if (count($srcRoute['order']) == 0) continue;
+            
+            // Pick a random location from source route
+            $srcLocationIdx = array_rand($srcRoute['order']);
+            $locationId = $srcRoute['order'][$srcLocationIdx];
+            $location = $locationsById[$locationId];
+            
+            // Check capacity constraint for destination route
+            $locationTiles = $location->tegels ?? 0;
+            $locationMinutes = $location->completion_minutes ?? 0;
+            
+            if (isset($dstRoute['capacity']) && 
+                ($dstRoute['current_tiles'] + $locationTiles > $dstRoute['capacity'])) {
+                continue; // Skip this move if it violates capacity
+            }
+            
+            // Create temporary copy of routes for trial move
+            $tempSrcRoute = $srcRoute;
+            $tempDstRoute = $dstRoute;
+            
+            // Remove location from source route
+            unset($tempSrcRoute['order'][$srcLocationIdx]);
+            $tempSrcRoute['order'] = array_values($tempSrcRoute['order']); // Reindex
+            $tempSrcRoute['current_tiles'] -= $locationTiles;
+            $tempSrcRoute['current_completion_minutes'] -= $locationMinutes;
+            
+            // Find best position to insert in destination route
+            $bestPosition = 0;
+            $bestInsertionCost = PHP_FLOAT_MAX;
+            
+            // Try each possible insertion position
+            for ($i = 0; $i <= count($tempDstRoute['order']); $i++) {
+                $tempInsertRoute = $tempDstRoute;
+                
+                // Insert location at position i
+                array_splice($tempInsertRoute['order'], $i, 0, [$locationId]);
+                $tempInsertRoute['current_tiles'] += $locationTiles;
+                $tempInsertRoute['current_completion_minutes'] += $locationMinutes;
+                
+                // Check for time window violations
+                if ($this->checkTimeWindowViolations($tempInsertRoute, $locationsById)) {
+                    continue; // Skip this position if it creates time window violations
+                }
+                
+                // Calculate new distance for this insertion
+                $newDstDistance = $this->calculateRouteTotalDistance(
+                    $tempInsertRoute['order'], 
+                    $locationsById, 
+                    $distanceMatrix
+                );
+                
+                if ($newDstDistance < $bestInsertionCost) {
+                    $bestInsertionCost = $newDstDistance;
+                    $bestPosition = $i;
+                }
+            }
+            
+            // Insert at best position in destination route
+            array_splice($tempDstRoute['order'], $bestPosition, 0, [$locationId]);
+            $tempDstRoute['current_tiles'] += $locationTiles;
+            $tempDstRoute['current_completion_minutes'] += $locationMinutes;
+            
+            // Check time window constraints for updated routes
+            $srcTimeViolation = $this->checkTimeWindowViolations($tempSrcRoute, $locationsById);
+            $dstTimeViolation = $this->checkTimeWindowViolations($tempDstRoute, $locationsById);
+            
+            if ($srcTimeViolation || $dstTimeViolation) {
+                continue; // Skip this move if it violates time windows
+            }
+            
+            // Calculate new total distance
+            $tempRoutes = $workingRoutes;
+            $tempRoutes[$srcRouteKey] = $tempSrcRoute;
+            $tempRoutes[$dstRouteKey] = $tempDstRoute;
+            
+            $newTotalDistance = $this->calculateTotalDistance($tempRoutes, $locationsById, $distanceMatrix);
+            
+            // Decide whether to accept the move
+            $deltaDistance = $newTotalDistance - $bestDistance;
+            
+            $acceptProbability = ($deltaDistance < 0) ? 1.0 : exp(-$deltaDistance / $temperature);
+            
+            if ($acceptProbability > mt_rand() / mt_getrandmax()) {
+                // Accept the move
+                $workingRoutes[$srcRouteKey] = $tempSrcRoute;
+                $workingRoutes[$dstRouteKey] = $tempDstRoute;
+                $locationsMovedCount++;
+                
+                if ($newTotalDistance < $bestDistance) {
+                    $bestDistance = $newTotalDistance;
+                    $bestRoutes = $workingRoutes;
+                    $noImprovementCounter = 0;
+                } else {
+                    $noImprovementCounter++;
+                }
+            } else {
+                $noImprovementCounter++;
+            }
+            
+            // Cool down temperature
+            $temperature *= $coolingRate;
+            
+            // Break if no improvement for many iterations
+            if ($noImprovementCounter >= $noImprovementLimit) break;
+        }
+        
+        // Calculate improvement percentage
+        $improvement = ($initialTotalDistance > 0) 
+            ? (($initialTotalDistance - $bestDistance) / $initialTotalDistance) * 100.0 
+            : 0.0;
+        
+        return [
+            'routes' => $bestRoutes,
+            'initial_distance' => $initialTotalDistance,
+            'final_distance' => $bestDistance,
+            'improvement' => $improvement,
+            'locations_moved' => $locationsMovedCount,
+            'iterations' => $iteration,
+        ];
+    }
+    
+    /**
+     * Check if a route has time window violations
+     * 
+     * @param array $route Route data
+     * @param array $locationsById Map of locations by ID
+     * @return boolean True if violations exist, false otherwise
+     */
+    private function checkTimeWindowViolations($route, $locationsById)
+    {
+        // If route is empty, there are no violations
+        if (empty($route['order'])) return false;
+        
+        $currentTime = strtotime($route['start_time']);
+        $serviceTimeTotal = 0;
+        $lastLocationId = null;
+        
+        foreach ($route['order'] as $i => $locationId) {
+            $location = $locationsById[$locationId];
+            
+            // Add travel time from previous location if not first stop
+            if ($lastLocationId !== null) {
+                // Estimate travel time based on distance (assuming 50km/h average speed)
+                $distance = $this->calculateDistanceBetweenLocations(
+                    $locationsById[$lastLocationId], 
+                    $location
+                );
+                $travelTimeMinutes = ($distance / 50) * 60; // Convert to minutes
+                $currentTime += $travelTimeMinutes * 60; // Convert to seconds
+            }
+            
+            // Check if we arrive after end time
+            if ($location->endtime && $currentTime > strtotime($location->endtime)) {
+                return true; // Time window violation
+            }
+            
+            // Wait if we arrived before begin time
+            if ($location->begintime && $currentTime < strtotime($location->begintime)) {
+                $currentTime = strtotime($location->begintime);
+            }
+            
+            // Add service time
+            $serviceTimeMinutes = $location->completion_minutes ?? 0;
+            $currentTime += $serviceTimeMinutes * 60; // Convert to seconds
+            $serviceTimeTotal += $serviceTimeMinutes;
+            
+            $lastLocationId = $locationId;
+        }
+        
+        // Check total route duration
+        $routeDurationMinutes = ($currentTime - strtotime($route['start_time'])) / 60;
+        if ($routeDurationMinutes > $route['max_duration_minutes']) {
+            return true; // Max duration violation
+        }
+        
+        return false;
+    }
+    
+    /**
+     * Calculate total distance for all routes
+     * 
+     * @param array $routes Working routes
+     * @param array $locationsById Locations map by ID
+     * @param array $distanceMatrix Distance matrix
+     * @return float Total distance across all routes
+     */
+    private function calculateTotalDistance($routes, $locationsById, $distanceMatrix)
+    {
+        $totalDistance = 0;
+        
+        foreach ($routes as $route) {
+            $totalDistance += $this->calculateRouteTotalDistance(
+                $route['order'], 
+                $locationsById, 
+                $distanceMatrix
+            );
+        }
+        
+        return $totalDistance;
+    }
+    
+    /**
+     * Calculate distance for a single route
+     * 
+     * @param array $locationIds Array of location IDs in order
+     * @param array $locationsById Locations map by ID
+     * @param array $distanceMatrix Distance matrix
+     * @return float Total route distance
+     */
+    private function calculateRouteTotalDistance($locationIds, $locationsById, $distanceMatrix)
+    {
+        if (count($locationIds) <= 1) return 0;
+        
+        $totalDistance = 0;
+        $prevLocationId = null;
+        
+        foreach ($locationIds as $locationId) {
+            if ($prevLocationId !== null) {
+                // Use distance matrix if available
+                if (isset($distanceMatrix[$prevLocationId][$locationId])) {
+                    $totalDistance += $distanceMatrix[$prevLocationId][$locationId];
+                } else {
+                    // Fallback to direct calculation
+                    $totalDistance += $this->calculateDistanceBetweenLocations(
+                        $locationsById[$prevLocationId], 
+                        $locationsById[$locationId]
+                    );
+                }
+            }
+            $prevLocationId = $locationId;
+        }
+        
+        return $totalDistance;
+    }
+
+    /**
+     * Calculate the total time required to travel from one point to another
+     * This includes travel time and service time at the destination
+     *
+     * @param array $fromLocation
+     * @param array $toLocation
+     * @param float $distance
+     * @return float Time in minutes
+     */
+    private function calculateTravelTime($fromLocation, $toLocation, $distance = null)
+    {
+        // Calculate distance if not provided
+        if ($distance === null) {
+            $distance = $this->calculateDistance(
+                $fromLocation['latitude'],
+                $fromLocation['longitude'],
+                $toLocation['latitude'],
+                $toLocation['longitude']
+            );
+        }
+        
+        // Assume average speed of 30 km/h in urban areas
+        $averageSpeedKmh = 30; 
+        
+        // Convert to meters per minute
+        $speedMpm = ($averageSpeedKmh * 1000) / 60;
+        
+        // Travel time in minutes
+        $travelTime = $distance / $speedMpm;
+        
+        // Add service time at destination (tiles * completion time per tile)
+        $serviceTileTime = isset($toLocation['tegels']) && isset($toLocation['completion_minutes']) 
+            ? $toLocation['tegels'] * $toLocation['completion_minutes'] 
+            : 0;
+            
+        // If we have a fixed completion time, use that instead
+        $serviceTime = isset($toLocation['completion_minutes']) ? $toLocation['completion_minutes'] : 0;
+        
+        return $travelTime + max($serviceTileTime, $serviceTime);
+    }
+
+    /**
+     * Check if a route solution is feasible considering time windows
+     *
+     * @param array $route Array of location IDs
+     * @param array $distanceMatrix Distance matrix between locations
+     * @param array $locations Array of location data
+     * @return array [isFeasible, violations, waitTime, arrivalTimes]
+     */
+    private function checkTimeWindowFeasibility($route, $distanceMatrix, $locations)
+    {
+        $currentTime = 480; // Start at 8:00 AM (minutes since midnight)
+        $violations = 0;
+        $waitTime = 0;
+        $arrivalTimes = [];
+        
+        for ($i = 0; $i < count($route); $i++) {
+            $locationId = $route[$i];
+            $location = $locations[$locationId];
+            
+            if ($i > 0) {
+                $prevLocationId = $route[$i - 1];
+                $prevLocation = $locations[$prevLocationId];
+                $distance = $distanceMatrix[$prevLocationId][$locationId];
+                
+                // Add travel time
+                $travelTime = $this->calculateTravelTime($prevLocation, $location, $distance);
+                $currentTime += $travelTime;
+            }
+            
+            // Store arrival time
+            $arrivalTimes[$locationId] = $currentTime;
+            
+            // Check begintime constraint (earliest time)
+            if (isset($location['begintime']) && $location['begintime']) {
+                $beginMinutes = $this->timeToMinutes($location['begintime']);
+                
+                if ($currentTime < $beginMinutes) {
+                    // Need to wait until location opens
+                    $waitingTime = $beginMinutes - $currentTime;
+                    $waitTime += $waitingTime;
+                    $currentTime = $beginMinutes;
+                }
+            }
+            
+            // Check endtime constraint (latest time)
+            if (isset($location['endtime']) && $location['endtime']) {
+                $endMinutes = $this->timeToMinutes($location['endtime']);
+                
+                if ($currentTime > $endMinutes) {
+                    // Arrived too late
+                    $violations += ($currentTime - $endMinutes);
+                }
+            }
+            
+            // Add service time
+            $serviceTime = isset($location['completion_minutes']) ? $location['completion_minutes'] : 0;
+            $currentTime += $serviceTime;
+        }
+        
+        return [
+            'isFeasible' => ($violations === 0),
+            'violations' => $violations,
+            'waitTime' => $waitTime,
+            'arrivalTimes' => $arrivalTimes
+        ];
+    }
+    
+    /**
+     * Convert time string to minutes since midnight
+     *
+     * @param string $timeStr Time in format HH:MM:SS or HH:MM
+     * @return int Minutes since midnight
+     */
+    private function timeToMinutes($timeStr)
+    {
+        if (!$timeStr) return 0;
+        
+        $parts = explode(':', $timeStr);
+        $hours = intval($parts[0]);
+        $minutes = intval($parts[1]);
+        
+        return ($hours * 60) + $minutes;
+    }
+
+    /**
+     * Evaluate a solution based on multiple objectives:
+     * - Total distance across all routes
+     * - Time window violations
+     * - Load balancing between routes (distance and workload)
+     * - Wait time
+     *
+     * @param array $solution
+     * @param array $distanceMatrix
+     * @param array $locations
+     * @return float
+     */
+    private function evaluateSolution($solution, $distanceMatrix, $locations)
+    {
+        $totalDistance = 0;
+        $timeWindowViolations = 0;
+        $routeLengths = [];
+        $routeWorkloads = [];
+        $totalWaitTime = 0;
+        
+        foreach ($solution as $routeId => $locationOrder) {
+            $routeDistance = 0;
+            $routeWorkload = 0;
+            
+            // Calculate route distance and check time windows
+            if (count($locationOrder) > 0) {
+                // Calculate route distance
+                for ($i = 0; $i < count($locationOrder) - 1; $i++) {
+                    $fromId = $locationOrder[$i];
+                    $toId = $locationOrder[$i + 1];
+                    
+                    if (isset($distanceMatrix[$fromId][$toId])) {
+                        $routeDistance += $distanceMatrix[$fromId][$toId];
+                    }
+                }
+                
+                // Check time window constraints
+                $feasibility = $this->checkTimeWindowFeasibility($locationOrder, $distanceMatrix, $locations);
+                $timeWindowViolations += $feasibility['violations'];
+                $totalWaitTime += $feasibility['waitTime'];
+                
+                // Calculate workload (service time)
+                foreach ($locationOrder as $locationId) {
+                    if (isset($locations[$locationId])) {
+                        $location = $locations[$locationId];
+                        $tegels = isset($location['tegels']) ? $location['tegels'] : 0;
+                        $completionMinutes = isset($location['completion_minutes']) ? $location['completion_minutes'] : 0;
+                        
+                        // If completion_minutes is set, use it; otherwise calculate based on tegels
+                        $serviceTime = $completionMinutes > 0 ? $completionMinutes : ($tegels * 2); // 2 min per tile
+                        $routeWorkload += $serviceTime;
+                    }
+                }
+            }
+            
+            $totalDistance += $routeDistance;
+            $routeLengths[$routeId] = $routeDistance;
+            $routeWorkloads[$routeId] = $routeWorkload;
+        }
+        
+        // Calculate distance load balancing penalty (standard deviation of route lengths)
+        $avgRouteLength = count($routeLengths) > 0 ? array_sum($routeLengths) / count($routeLengths) : 0;
+        $distanceVarianceSum = 0;
+        
+        foreach ($routeLengths as $length) {
+            $distanceVarianceSum += pow($length - $avgRouteLength, 2);
+        }
+        
+        $distanceLoadBalancingPenalty = count($routeLengths) > 0 
+            ? sqrt($distanceVarianceSum / count($routeLengths)) 
+            : 0;
+        
+        // Calculate workload balancing penalty (standard deviation of workloads)
+        $avgWorkload = count($routeWorkloads) > 0 ? array_sum($routeWorkloads) / count($routeWorkloads) : 0;
+        $workloadVarianceSum = 0;
+        
+        foreach ($routeWorkloads as $workload) {
+            $workloadVarianceSum += pow($workload - $avgWorkload, 2);
+        }
+        
+        $workloadBalancingPenalty = count($routeWorkloads) > 0 
+            ? sqrt($workloadVarianceSum / count($routeWorkloads)) 
+            : 0;
+        
+        // Weighted sum of objectives
+        $distanceWeight = 1.0;
+        $timeWindowWeight = 20.0; // High penalty for time window violations
+        $distanceBalancingWeight = 0.3;
+        $workloadBalancingWeight = 0.7;
+        $waitTimeWeight = 0.1; // Small penalty for wait time
+        
+        return ($distanceWeight * $totalDistance) + 
+               ($timeWindowWeight * $timeWindowViolations) + 
+               ($distanceBalancingWeight * $distanceLoadBalancingPenalty) +
+               ($workloadBalancingWeight * $workloadBalancingPenalty) +
+               ($waitTimeWeight * $totalWaitTime);
+    }
+
+    /**
+     * Optimize all routes using simulated annealing to find global optimum across routes
+     *
+     * @param Collection $routes Collection of Route models
+     * @param array $distanceMatrix Distance matrix between locations
+     * @param Collection $locations Collection of Location models
+     * @return array The optimized solution
+     */
+    private function optimizeAllRoutesWithSA($routes, $distanceMatrix, $locations)
+    {
+        // Convert routes to a solution format: [routeId => [locationIds]]
+        $currentSolution = [];
+        foreach ($routes as $route) {
+            $currentSolution[$route->id] = $route->locations->pluck('id')->toArray();
+        }
+        
+        // Initial parameters for simulated annealing
+        $initialTemperature = 100.0;
+        $finalTemperature = 0.1;
+        $coolingRate = 0.98;
+        $currentTemperature = $initialTemperature;
+        $maxIterations = 1000;
+        $iterationsWithoutImprovement = 0;
+        $maxIterationsWithoutImprovement = 100;
+        $reheatingThreshold = 0.2; // When to reheat
+        
+        // Evaluate initial solution
+        $currentEnergy = $this->evaluateSolution($currentSolution, $distanceMatrix, $locations);
+        $bestSolution = $currentSolution;
+        $bestEnergy = $currentEnergy;
+        
+        $iteration = 0;
+        while ($currentTemperature > $finalTemperature && $iteration < $maxIterations) {
+            // Generate neighbor solution
+            $newSolution = $this->generateNeighborSolution($currentSolution);
+            
+            // Evaluate new solution
+            $newEnergy = $this->evaluateSolution($newSolution, $distanceMatrix, $locations);
+            
+            // Decide whether to accept the new solution
+            $acceptNewSolution = false;
+            
+            if ($newEnergy < $currentEnergy) {
+                // Always accept better solutions
+                $acceptNewSolution = true;
+                $iterationsWithoutImprovement = 0;
+                
+                // Update best solution if this is the best so far
+                if ($newEnergy < $bestEnergy) {
+                    $bestSolution = $newSolution;
+                    $bestEnergy = $newEnergy;
+                }
+            } else {
+                // Accept worse solutions with a probability based on temperature
+                $delta = $newEnergy - $currentEnergy;
+                $probability = exp(-$delta / $currentTemperature);
+                
+                if (mt_rand() / mt_getrandmax() < $probability) {
+                    $acceptNewSolution = true;
+                }
+                
+                $iterationsWithoutImprovement++;
+            }
+            
+            // Update current solution if accepted
+            if ($acceptNewSolution) {
+                $currentSolution = $newSolution;
+                $currentEnergy = $newEnergy;
+            }
+            
+            // Adaptive cooling: slow down cooling if we're making progress
+            $adaptiveCoolingRate = ($iterationsWithoutImprovement < $maxIterationsWithoutImprovement / 2) 
+                ? $coolingRate  // normal cooling
+                : $coolingRate * 0.95; // faster cooling if stuck
+            
+            // Cool down temperature
+            $currentTemperature *= $adaptiveCoolingRate;
+            
+            // Reheat if we've been stuck for too long but not at very low temperatures
+            if ($iterationsWithoutImprovement >= $maxIterationsWithoutImprovement && 
+                $currentTemperature > $finalTemperature * 10) {
+                // Reheat to a fraction of the initial temperature
+                $currentTemperature = $initialTemperature * $reheatingThreshold;
+                $reheatingThreshold *= 0.9; // Reduce reheating threshold for next time
+                $iterationsWithoutImprovement = 0;
+            }
+            
+            $iteration++;
+        }
+        
+        return $bestSolution;
+    }
+
+    /**
+     * Generate a neighbor solution by either moving or swapping locations between routes
+     *
+     * @param array $currentSolution
+     * @return array
+     */
+    private function generateNeighborSolution($currentSolution)
+    {
+        $newSolution = $currentSolution;
+        $routeIds = array_keys($newSolution);
+        
+        if (count($routeIds) < 1) {
+            return $currentSolution;
+        }
+
+        // Randomly choose operation: move or swap (70% move, 30% swap)
+        $operation = (mt_rand(1, 100) <= 70) ? 'move' : 'swap';
+        
+        if ($operation === 'move') {
+            // Select source route with at least 2 locations
+            $validSourceRoutes = [];
+            foreach ($routeIds as $routeId) {
+                if (count($newSolution[$routeId]) > 1) {
+                    $validSourceRoutes[] = $routeId;
+                }
+            }
+            
+            if (empty($validSourceRoutes)) {
+                return $currentSolution;
+            }
+            
+            $sourceRouteId = $validSourceRoutes[array_rand($validSourceRoutes)];
+            $targetRouteId = $routeIds[array_rand($routeIds)];
+            
+            // Make sure we don't select the same route
+            while ($targetRouteId == $sourceRouteId && count($routeIds) > 1) {
+                $targetRouteId = $routeIds[array_rand($routeIds)];
+            }
+            
+            // Select a random location from source route
+            $locationIndexToMove = array_rand($newSolution[$sourceRouteId]);
+            $locationToMove = $newSolution[$sourceRouteId][$locationIndexToMove];
+            
+            // Remove location from source route
+            unset($newSolution[$sourceRouteId][$locationIndexToMove]);
+            $newSolution[$sourceRouteId] = array_values($newSolution[$sourceRouteId]);
+            
+            // Add location to target route at a random position
+            $targetPosition = rand(0, count($newSolution[$targetRouteId]));
+            array_splice($newSolution[$targetRouteId], $targetPosition, 0, [$locationToMove]);
+        } else {
+            // Swap operation: exchange locations between two routes
+            
+            // Need at least 2 routes with at least 1 location each
+            $validRoutes = [];
+            foreach ($routeIds as $routeId) {
+                if (count($newSolution[$routeId]) > 0) {
+                    $validRoutes[] = $routeId;
+                }
+            }
+            
+            if (count($validRoutes) < 2) {
+                return $currentSolution;
+            }
+            
+            // Select two different routes
+            $routeIndex1 = array_rand($validRoutes);
+            $routeId1 = $validRoutes[$routeIndex1];
+            
+            // Remove selected route from valid routes to ensure different routes
+            unset($validRoutes[$routeIndex1]);
+            $validRoutes = array_values($validRoutes);
+            
+            $routeId2 = $validRoutes[array_rand($validRoutes)];
+            
+            // Select random locations from each route
+            $locationIndex1 = array_rand($newSolution[$routeId1]);
+            $locationIndex2 = array_rand($newSolution[$routeId2]);
+            
+            // Swap locations
+            $location1 = $newSolution[$routeId1][$locationIndex1];
+            $location2 = $newSolution[$routeId2][$locationIndex2];
+            
+            $newSolution[$routeId1][$locationIndex1] = $location2;
+            $newSolution[$routeId2][$locationIndex2] = $location1;
+        }
+        
+        return $newSolution;
+    }
+
+    /**
+     * Optimize all routes by redistributing locations across routes
+     * using time windows, multi-objective optimization and simulated annealing
+     *
+     * @param bool $returnJson Whether to return a JSON response (for API calls) or silently optimize (for internal calls)
+     * @return \Illuminate\Http\JsonResponse|bool
+     */
+    public function optimizeAllRoutes($returnJson = true)
+    {
+        try {
+            // Get all routes without filtering by user_id
+            $routes = Route::with('locations')->get();
+            
+            // Check if we have at least two routes
+            if ($routes->count() < 2) {
+                if ($returnJson) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'You need at least two routes to perform cross-route optimization.'
+                    ], 400);
+                }
+                return false;
+            }
+
+            // Collect all locations from all routes
+            $locationIds = [];
+            foreach ($routes as $route) {
+                $locationIds = array_merge($locationIds, $route->locations->pluck('id')->toArray());
+            }
+            
+            if (empty($locationIds)) {
+                if ($returnJson) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'No locations found across routes.'
+                    ], 400);
+                }
+                return false;
+            }
+
+            $locations = Location::whereIn('id', $locationIds)->get()->keyBy('id');
+
+            // Build distance matrix for all locations
+            $distanceMatrix = [];
+            foreach ($locationIds as $fromId) {
+                if (!isset($locations[$fromId])) continue;
+                
+                $from = $locations[$fromId];
+                $distanceMatrix[$fromId] = [];
+                
+                foreach ($locationIds as $toId) {
+                    if (!isset($locations[$toId])) continue;
+                    
+                    $to = $locations[$toId];
+                    $distanceMatrix[$fromId][$toId] = $this->calculateDistance(
+                        $from->latitude, $from->longitude, 
+                        $to->latitude, $to->longitude
+                    );
+                }
+            }
+            
+            // Perform cross-route optimization
+            $bestSolution = $this->optimizeAllRoutesWithSA($routes, $distanceMatrix, $locations);
+            
+            // Re-optimize each route individually with 2-opt
+            foreach ($bestSolution as $routeId => $locationOrder) {
+                if (count($locationOrder) > 2) {
+                    $bestSolution[$routeId] = $this->twoOptImprovement(
+                        $locationOrder, 
+                        $distanceMatrix
+                    );
+                }
+            }
+
+            // Save the optimized routes
+            DB::beginTransaction();
+            try {
+                foreach ($bestSolution as $routeId => $locationOrder) {
+                    $route = $routes->firstWhere('id', $routeId);
+                    if ($route) {
+                        $route->locations()->detach();
+                        
+                        // Attach locations in the optimized order
+                        foreach ($locationOrder as $index => $locationId) {
+                            $route->locations()->attach($locationId, ['order' => $index]);
+                        }
+                    }
+                }
+                DB::commit();
+                
+                // Clear cache to reflect the new routes
+                Cache::forget(self::CACHE_KEY . '_index');
+                
+                if ($returnJson) {
+                    return response()->json([
+                        'success' => true,
+                        'message' => 'All routes have been optimized successfully!'
+                    ]);
+                }
+                return true;
+            } catch (\Exception $e) {
+                DB::rollBack();
+                Log::error("Error saving optimized routes: " . $e->getMessage());
+                if ($returnJson) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'An error occurred while saving the optimized routes.'
+                    ], 500);
+                }
+                return false;
+            }
+        } catch (\Exception $e) {
+            Log::error("Error during cross-route optimization: " . $e->getMessage());
+            if ($returnJson) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'An error occurred during optimization: ' . $e->getMessage()
+                ], 500);
+            }
+            return false;
+        }
+    }
 }
+

@@ -59,7 +59,7 @@ class Location extends Model
 
     /**
      * Calculate the estimated duration to complete this location
-     * Formula: 40 minutes + (1.5 × number of tegels)
+     * Formula: 40 minutes + (2 × number of tegels)
      *
      * @return int Duration in minutes
      */
@@ -75,7 +75,7 @@ class Location extends Model
         
         // Use the new tegels field if available, otherwise fall back to tegels_count
         $tegelCount = $this->tegels ?? $this->tegels_count ?? 0;
-        $additionalTime = ceil($tegelCount * 1.5); // 1.5 minutes per tegel, rounded up
+        $additionalTime = ceil($tegelCount * 2); // 2 minutes per tegel, rounded up
         
         return $baseDuration + $additionalTime;
     }

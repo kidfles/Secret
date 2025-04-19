@@ -8,37 +8,7 @@
 <link rel="stylesheet" href="{{ asset('css/routes.css') }}">
 
 <div class="max-w-[1920px] mx-auto px-4 py-8">
-  {{-- Debug info --}}
-  @if(isset($queryCount))
-  <div class="mb-4 p-4 bg-gray-100 border-l-4 border-gray-500 text-gray-700 rounded-md">
-    <h3 class="font-bold">Debug Info</h3>
-    <div class="grid grid-cols-2 gap-2 mt-2">
-      <div>
-        <p>Database Queries: <span class="font-semibold">{{ $queryCount }}</span></p>
-        @if(isset($fromCache))
-        <p>From Cache: <span class="font-semibold {{ $fromCache ? 'text-green-600' : 'text-red-600' }}">{{ $fromCache ? 'Yes' : 'No' }}</span></p>
-        @endif
-      </div>
-      <div>
-        <p>Routes: <span class="font-semibold">{{ count($routes) }}</span></p>
-        <p>Total Locations: <span class="font-semibold">{{ $routes->sum(function($r) { return $r->locations->count(); }) }}</span></p>
-      </div>
-    </div>
-    @if(app()->environment('local'))
-      <details>
-        <summary class="cursor-pointer text-blue-600 mt-2">Show Queries</summary>
-        <pre class="mt-2 text-xs overflow-auto max-h-48 bg-gray-800 text-white p-3 rounded">{{ json_encode($queryLog, JSON_PRETTY_PRINT) }}</pre>
-      </details>
-    @endif
-  </div>
-  @endif
-
   {{-- success / error alerts --}}
-  @if(session('success'))
-    <div class="mb-4 p-4 bg-green-100 border-l-4 border-green-500 text-green-700 rounded-md">
-      {{ session('success') }}
-    </div>
-  @endif
   @if(session('error'))
     <div class="mb-4 p-4 bg-red-100 border-l-4 border-red-500 text-red-700 rounded-md">
       {{ session('error') }}
@@ -90,34 +60,42 @@
     </div>
   @endif
 
-  <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
-    <div class="lg:col-span-3 space-y-6">
-
-      {{-- Generate & Delete All --}}
-      <div class="bg-white rounded-lg shadow p-6">
-        <div class="flex justify-between items-center mb-4">
-          <h2 class="text-lg font-semibold">Routes genereren</h2>
-          <form action="{{ route('routes.deleteAll') }}" method="POST"
-                onsubmit="return confirm('Weet je zeker dat je alle routes wilt verwijderen?');">
-            @csrf @method('DELETE')
-            <button class="bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700">
-              Alle routes verwijderen
-            </button>
-          </form>
-        </div>
-        <form action="{{ route('routes.generate') }}" method="POST" class="space-y-4">
+  <div class="bg-white p-4 rounded shadow-md mb-6">
+    <div class="flex flex-col md:flex-row md:justify-between">
+      <h1 class="text-2xl font-bold mb-4">Routes</h1>
+      <div class="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2">
+        <form action="{{ route('routes.generate') }}" method="POST" class="inline flex space-x-2">
           @csrf
-          <label for="num_routes" class="block text-sm font-medium text-gray-700">Aantal routes</label>
-          <input type="number" name="num_routes" id="num_routes" min="1" value="1" required
-                 class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500">
-          <div class="flex justify-end">
-            <button type="submit"
-                    class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700">
-              Routes genereren
-            </button>
+          <div class="flex items-center">
+            <label for="num_routes" class="mr-2 text-sm">Aantal routes:</label>
+            <input type="number" name="num_routes" id="num_routes" min="1" value="3" class="w-16 h-full px-2 py-1 border border-gray-300 rounded">
           </div>
+          <button type="submit" class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded">
+            Generate Route
+          </button>
+        </form>
+        <button id="optimize-all-routes" class="bg-purple-500 hover:bg-purple-600 text-white px-4 py-2 rounded">
+          Optimize All Routes
+        </button>
+        <form action="{{ route('routes.deleteAll') }}" method="POST" class="inline" onsubmit="return confirm('Are you sure you want to delete all routes?');">
+          @csrf
+          @method('DELETE')
+          <button type="submit" class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded">
+            Delete All Routes
+          </button>
         </form>
       </div>
+    </div>
+  </div>
+
+  @if(session('success'))
+    <div class="mb-4 p-4 bg-green-100 border-l-4 border-green-500 text-green-700 rounded-md">
+      {{ session('success') }}
+    </div>
+  @endif
+
+  <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
+    <div class="lg:col-span-3 space-y-6">
 
       {{-- Routes Grid --}}
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
@@ -343,6 +321,63 @@
 <script>
   window.routesData = @json($routes);
   window.routeColors = @json($routeColors);
+
+  document.addEventListener('DOMContentLoaded', function() {
+    // Handle optimize all routes button
+    document.getElementById('optimize-all-routes').addEventListener('click', function() {
+      optimizeAllRoutes();
+    });
+
+    // Function to optimize all routes (cross-route optimization)
+    function optimizeAllRoutes() {
+      // Show loading message
+      const loadingOverlay = document.createElement('div');
+      loadingOverlay.classList.add('fixed', 'inset-0', 'bg-black', 'bg-opacity-50', 'flex', 'items-center', 'justify-center', 'z-50');
+      loadingOverlay.id = 'loading-overlay';
+      
+      const loadingMsg = document.createElement('div');
+      loadingMsg.classList.add('bg-white', 'p-6', 'rounded-lg', 'shadow-lg', 'text-center');
+      loadingMsg.innerHTML = `
+        <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-purple-500 mx-auto mb-4"></div>
+        <p class="text-lg">Optimizing all routes...</p>
+        <p class="text-sm text-gray-600 mt-2">This may take a few minutes for complex routes</p>
+      `;
+      
+      loadingOverlay.appendChild(loadingMsg);
+      document.body.appendChild(loadingOverlay);
+      
+      // Send AJAX request
+      fetch('{{ route('routes.optimize-all') }}', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-TOKEN': '{{ csrf_token() }}'
+        }
+      })
+      .then(response => response.json())
+      .then(data => {
+        // Remove loading overlay
+        document.getElementById('loading-overlay').remove();
+        
+        // Check for success or error
+        if (data.success) {
+          // Directly reload the page without showing alert
+          window.location.reload();
+        } else {
+          alert('Error: ' + data.message);
+        }
+      })
+      .catch(error => {
+        // Remove loading overlay
+        if (document.getElementById('loading-overlay')) {
+          document.getElementById('loading-overlay').remove();
+        }
+        
+        console.error('Error:', error);
+        alert('An error occurred during optimization. Please try again later.');
+      });
+    }
+  });
 </script>
 @endsection
 
@@ -354,3 +389,4 @@
   {{-- Our application JS --}}
   <script defer src="{{ asset('js/routes.js') }}"></script>
 @endpush
+
