@@ -4,6 +4,7 @@ namespace Database\Seeders;
 
 use Illuminate\Database\Seeder;
 use App\Models\Location;
+use Illuminate\Support\Facades\DB;
 
 class LocationSeeder extends Seeder
 {
@@ -12,194 +13,286 @@ class LocationSeeder extends Seeder
      */
     public function run(): void
     {
+        // Check database driver
+        $connection = DB::connection()->getDriverName();
+        
         // Clear existing locations
-        Location::truncate();
+        if ($connection === 'sqlite') {
+            DB::table('locations')->delete();
+        } else {
+            DB::table('locations')->truncate();
+        }
+        
+        // Define tile types - using database format (not display format)
+        $tileTypes = ['pix25', 'pix100', 'vlakled', 'patroon'];
+        
+        // Define time windows (in 24-hour format)
+        $timeWindows = [
+            // Morning only
+            ['08:00', '12:00'],
+            // Afternoon only
+            ['13:00', '17:00'],
+            // Full day
+            ['08:00', '17:00'],
+            // Early morning
+            ['07:00', '10:00'],
+            // Late afternoon
+            ['15:00', '18:00'],
+            // No constraints
+            [null, null],
+        ];
 
-        // Amsterdam
-        Location::create([
-            'name' => 'Amsterdam Centraal',
-            'street' => 'Stationsplein',
-            'house_number' => '1',
-            'postal_code' => '1012 AB',
-            'city' => 'Amsterdam',
-            'latitude' => 52.3791,
-            'longitude' => 4.9003,
-            'address' => 'Stationsplein 1, 1012 AB Amsterdam',
-            'person_capacity' => 3,
-            'tegels' => 30,
-            'begin_time' => '09:00',
-            'end_time' => '17:00',
-            'completion_minutes' => 90
-        ]);
+        // Netherlands cities around Nederasselt (which is the starting point)
+        $cities = [
+            // City, Postal Code
+            ['Nijmegen', '6500'],
+            ['Wijchen', '6600'],
+            ['Grave', '5360'],
+            ['Cuijk', '5430'],
+            ['Malden', '6580'],
+            ['Molenhoek', '6584'],
+            ['Beers', '5437'],
+            ['Heumen', '6582'],
+            ['Overasselt', '6611'],
+            ['Beuningen', '6640'],
+            ['Druten', '6650'],
+            ['Ewijk', '6644'],
+            ['Wijchen', '6605'],
+            ['Alverna', '6603'],
+            ['Batenburg', '6634'],
+            ['Bergharen', '6617'],
+            ['Hernen', '6616'],
+            ['Leur', '6615'],
+            ['Niftrik', '6606'],
+        ];
 
-        // Rotterdam
-        Location::create([
-            'name' => 'Rotterdam Markthal',
-            'street' => 'Dominee Jan Scharpstraat',
-            'house_number' => '298',
-            'postal_code' => '3011 GZ',
-            'city' => 'Rotterdam',
-            'latitude' => 51.9200,
-            'longitude' => 4.4875,
-            'address' => 'Dominee Jan Scharpstraat 298, 3011 GZ Rotterdam',
-            'person_capacity' => 4,
-            'tegels' => 25,
-            'begin_time' => '08:30',
-            'end_time' => '16:30',
-            'completion_minutes' => 75
-        ]);
+        // List of locations
+        $locations = [
+            // Near Nijmegen
+            [
+                'name' => 'Residentie De Hoge Hof',
+                'street' => 'Hogelandseweg',
+                'house_number' => '88',
+                'city' => 'Nijmegen',
+                'postal_code' => '6545 AB',
+                'latitude' => 51.837525,
+                'longitude' => 5.858041,
+                'person_capacity' => 3,
+                'tegels' => 18,
+                'tegels_type' => 'pix100',
+                'time_window_index' => 0, // Morning only
+            ],
+            [
+                'name' => 'Appartementen Mariënburg',
+                'street' => 'Mariënburg',
+                'house_number' => '26',
+                'city' => 'Nijmegen',
+                'postal_code' => '6511 PS',
+                'latitude' => 51.842772,
+                'longitude' => 5.866394,
+                'person_capacity' => 2,
+                'tegels' => 12,
+                'tegels_type' => 'pix25',
+                'time_window_index' => 2, // Full day
+            ],
+            [
+                'name' => 'Woontoren Nimbus',
+                'street' => 'Stieltjesstraat',
+                'house_number' => '204',
+                'city' => 'Nijmegen',
+                'postal_code' => '6512 WR',
+                'latitude' => 51.839912,
+                'longitude' => 5.856841,
+                'person_capacity' => 4,
+                'tegels' => 24,
+                'tegels_type' => 'vlakled',
+                'time_window_index' => 4, // Late afternoon
+            ],
+            
+            // Wijchen area
+            [
+                'name' => 'De Meeuwse Acker',
+                'street' => 'Meeuwse Acker',
+                'house_number' => '1445',
+                'city' => 'Wijchen',
+                'postal_code' => '6605 LN',
+                'latitude' => 51.806824,
+                'longitude' => 5.725903,
+                'person_capacity' => 2,
+                'tegels' => 16,
+                'tegels_type' => 'pix100',
+                'time_window_index' => 1, // Afternoon only
+            ],
+            [
+                'name' => 'Kasteel Wijchen',
+                'street' => 'Kasteellaan',
+                'house_number' => '9',
+                'city' => 'Wijchen',
+                'postal_code' => '6602 DE',
+                'latitude' => 51.808667,
+                'longitude' => 5.725903,
+                'person_capacity' => 2,
+                'tegels' => 8,
+                'tegels_type' => 'patroon',
+                'time_window_index' => 5, // No constraints
+            ],
+            
+            // Grave area
+            [
+                'name' => 'Oldenbarneveldtplein',
+                'street' => 'Oldenbarneveldtplein',
+                'house_number' => '10',
+                'city' => 'Grave',
+                'postal_code' => '5361 CL',
+                'latitude' => 51.759266,
+                'longitude' => 5.737488,
+                'person_capacity' => 3,
+                'tegels' => 22,
+                'tegels_type' => 'vlakled',
+                'time_window_index' => 3, // Early morning
+            ],
+            
+            // Cuijk area
+            [
+                'name' => 'Appartement Centrum Cuijk',
+                'street' => 'Grotestraat',
+                'house_number' => '45',
+                'city' => 'Cuijk',
+                'postal_code' => '5431 DH',
+                'latitude' => 51.728687,
+                'longitude' => 5.877776,
+                'person_capacity' => 2,
+                'tegels' => 14,
+                'tegels_type' => 'pix25',
+                'time_window_index' => 2, // Full day
+            ],
+            
+            // Malden area
+            [
+                'name' => 'Wooncomplex De Horst',
+                'street' => 'Broeksingel',
+                'house_number' => '1',
+                'city' => 'Malden',
+                'postal_code' => '6581 HA',
+                'latitude' => 51.778894,
+                'longitude' => 5.850235,
+                'person_capacity' => 3,
+                'tegels' => 20,
+                'tegels_type' => 'pix100',
+                'time_window_index' => 0, // Morning only
+            ],
+            
+            // Overasselt area
+            [
+                'name' => 'Dorpsplein',
+                'street' => 'Hoogstraat',
+                'house_number' => '9',
+                'city' => 'Overasselt',
+                'postal_code' => '6611 BT',
+                'latitude' => 51.756966,
+                'longitude' => 5.776617,
+                'person_capacity' => 2,
+                'tegels' => 10,
+                'tegels_type' => 'patroon',
+                'time_window_index' => 5, // No constraints
+            ],
+            
+            // Beuningen area
+            [
+                'name' => 'Centrumplein',
+                'street' => 'Wilhelminalaan',
+                'house_number' => '5',
+                'city' => 'Beuningen',
+                'postal_code' => '6641 KN',
+                'latitude' => 51.860065,
+                'longitude' => 5.765903,
+                'person_capacity' => 2,
+                'tegels' => 15,
+                'tegels_type' => 'pix25',
+                'time_window_index' => 1, // Afternoon only
+            ],
+            
+            // Druten area
+            [
+                'name' => 'Woonpark Druten',
+                'street' => 'Kattenburg',
+                'house_number' => '12',
+                'city' => 'Druten',
+                'postal_code' => '6651 LA',
+                'latitude' => 51.887815,
+                'longitude' => 5.609752,
+                'person_capacity' => 3,
+                'tegels' => 25,
+                'tegels_type' => 'vlakled',
+                'time_window_index' => 4, // Late afternoon
+            ],
+            
+            // Generate additional random locations
+            // These will be added dynamically below
+        ];
 
-        // Den Haag
-        Location::create([
-            'name' => 'Binnenhof',
-            'street' => 'Binnenhof',
-            'house_number' => '1',
-            'postal_code' => '2513 AA',
-            'city' => 'Den Haag',
-            'latitude' => 52.0797,
-            'longitude' => 4.3122,
-            'address' => 'Binnenhof 1, 2513 AA Den Haag',
-            'person_capacity' => 2,
-            'tegels' => 15,
-            'begin_time' => '10:00',
-            'end_time' => '15:00',
-            'completion_minutes' => 60
-        ]);
+        // Generate additional locations to have a good dataset
+        $additionalLocations = 15;
+        for ($i = 0; $i < $additionalLocations; $i++) {
+            $cityIndex = rand(0, count($cities) - 1);
+            $cityInfo = $cities[$cityIndex];
+            $typeIndex = rand(0, count($tileTypes) - 1);
+            $timeWindowIndex = rand(0, count($timeWindows) - 1);
+            
+            // Generate a reasonable number of tiles
+            $tileCount = rand(4, 30);
+            
+            // Random coordinates near the Netherlands (centered around Nederasselt)
+            $lat = 51.76 + (rand(-100, 100) / 1000); // Base 51.76 with variation
+            $lng = 5.75 + (rand(-100, 100) / 1000);  // Base 5.75 with variation
+            
+            $locations[] = [
+                'name' => 'Locatie ' . ($i + 1),
+                'street' => 'Straat',
+                'house_number' => (string)rand(1, 100),
+                'city' => $cityInfo[0],
+                'postal_code' => $cityInfo[1] . ' ' . chr(65 + rand(0, 25)) . chr(65 + rand(0, 25)),
+                'latitude' => $lat,
+                'longitude' => $lng,
+                'person_capacity' => rand(1, 4),
+                'tegels' => $tileCount,
+                'tegels_type' => $tileTypes[$typeIndex],
+                'time_window_index' => $timeWindowIndex,
+            ];
+        }
 
-        // Utrecht
-        Location::create([
-            'name' => 'Domtoren',
-            'street' => 'Domplein',
-            'house_number' => '1',
-            'postal_code' => '3512 JC',
-            'city' => 'Utrecht',
-            'latitude' => 52.0907,
-            'longitude' => 5.1214,
-            'address' => 'Domplein 1, 3512 JC Utrecht',
-            'person_capacity' => 3,
-            'tegels' => 45,
-            'begin_time' => '09:30',
-            'end_time' => '17:30',
-            'completion_minutes' => 120
-        ]);
-
-        // Eindhoven
-        Location::create([
-            'name' => 'Philips Stadion',
-            'street' => 'Frederiklaan',
-            'house_number' => '10',
-            'postal_code' => '5616 NH',
-            'city' => 'Eindhoven',
-            'latitude' => 51.4416,
-            'longitude' => 5.4697,
-            'address' => 'Frederiklaan 10, 5616 NH Eindhoven',
-            'person_capacity' => 2,
-            'tegels' => 20,
-            'begin_time' => '11:00',
-            'end_time' => '19:00',
-            'completion_minutes' => 70
-        ]);
-
-        // Groningen
-        Location::create([
-            'name' => 'Martinitoren',
-            'street' => 'Martinikerkhof',
-            'house_number' => '1',
-            'postal_code' => '9712 JG',
-            'city' => 'Groningen',
-            'latitude' => 53.2194,
-            'longitude' => 6.5665,
-            'address' => 'Martinikerkhof 1, 9712 JG Groningen',
-            'person_capacity' => 2,
-            'tegels' => 35,
-            'begin_time' => '08:00',
-            'end_time' => '16:00',
-            'completion_minutes' => 100
-        ]);
-
-        // Maastricht
-        Location::create([
-            'name' => 'Vrijthof',
-            'street' => 'Vrijthof',
-            'house_number' => '1',
-            'postal_code' => '6211 LD',
-            'city' => 'Maastricht',
-            'latitude' => 50.8483,
-            'longitude' => 5.6889,
-            'address' => 'Vrijthof 1, 6211 LD Maastricht',
-            'person_capacity' => 4,
-            'tegels' => 28,
-            'begin_time' => '09:00',
-            'end_time' => '18:00',
-            'completion_minutes' => 80
-        ]);
-
-        // Zwolle
-        Location::create([
-            'name' => 'Grote Markt',
-            'street' => 'Grote Markt',
-            'house_number' => '1',
-            'postal_code' => '8011 LW',
-            'city' => 'Zwolle',
-            'latitude' => 52.5168,
-            'longitude' => 6.0830,
-            'address' => 'Grote Markt 1, 8011 LW Zwolle',
-            'person_capacity' => 2,
-            'tegels' => 22,
-            'begin_time' => '10:30',
-            'end_time' => '16:30',
-            'completion_minutes' => 65
-        ]);
-
-        // Arnhem
-        Location::create([
-            'name' => 'Burgers Zoo',
-            'street' => 'Antoon van Hooffplein',
-            'house_number' => '1',
-            'postal_code' => '6816 SH',
-            'city' => 'Arnhem',
-            'latitude' => 52.0055,
-            'longitude' => 5.8987,
-            'address' => 'Antoon van Hooffplein 1, 6816 SH Arnhem',
-            'person_capacity' => 5,
-            'tegels' => 60,
-            'begin_time' => '09:00',
-            'end_time' => '18:00',
-            'completion_minutes' => 150
-        ]);
-
-        // Nijmegen
-        Location::create([
-            'name' => 'Valkhof Museum',
-            'street' => 'Kelfkensbos',
-            'house_number' => '59',
-            'postal_code' => '6511 TB',
-            'city' => 'Nijmegen',
-            'latitude' => 51.8491,
-            'longitude' => 5.8694,
-            'address' => 'Kelfkensbos 59, 6511 TB Nijmegen',
-            'person_capacity' => 2,
-            'tegels' => 18,
-            'begin_time' => '10:00',
-            'end_time' => '17:00',
-            'completion_minutes' => 60
-        ]);
-
-        // Nederasselt (Base/Home location)
-        Location::create([
-            'name' => 'Nederasselt Base',
-            'street' => 'Hollestraat',
-            'house_number' => '25',
-            'postal_code' => '6621 JL',
-            'city' => 'Nederasselt',
-            'latitude' => 51.7620,
-            'longitude' => 5.7650,
-            'address' => 'Hollestraat 25, 6621 JL Nederasselt',
-            'person_capacity' => 2,
-            'tegels' => 10,
-            'begin_time' => '07:00',
-            'end_time' => '20:00',
-            'completion_minutes' => 40
-        ]);
+        // Now insert all locations
+        foreach ($locations as $loc) {
+            $timeWindowIndex = $loc['time_window_index'];
+            $timeWindow = $timeWindows[$timeWindowIndex];
+            
+            // Calculate realistic completion time based on tile count and formula
+            $baseDuration = 40; // Base duration in minutes
+            $additionalTime = ceil($loc['tegels'] * 2); // 2 minutes per tegel, rounded up
+            $completionMinutes = $baseDuration + $additionalTime;
+            
+            // Create the full address
+            $address = $loc['street'] . ' ' . $loc['house_number'] . ', ' . $loc['city'];
+            
+            Location::create([
+                'name' => $loc['name'],
+                'street' => $loc['street'],
+                'house_number' => $loc['house_number'],
+                'city' => $loc['city'],
+                'postal_code' => $loc['postal_code'],
+                'latitude' => $loc['latitude'],
+                'longitude' => $loc['longitude'],
+                'person_capacity' => $loc['person_capacity'],
+                'address' => $address,
+                'tegels' => $loc['tegels'],
+                'tegels_count' => $loc['tegels'], // Set both for compatibility
+                'tegels_type' => $loc['tegels_type'],
+                'begin_time' => $timeWindow[0], // Store just the time string
+                'end_time' => $timeWindow[1],   // Store just the time string
+                'completion_minutes' => $completionMinutes,
+            ]);
+        }
+        
+        $this->command->info('Created ' . count($locations) . ' locations with varying tile types and time windows');
     }
 } 

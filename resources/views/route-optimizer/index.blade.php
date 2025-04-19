@@ -66,30 +66,28 @@
                     <p class="mt-2 text-sm text-gray-500 italic">Standaard is 2 personen per locatie</p>
                 </div>
 
-                <div class="grid grid-cols-2 gap-4">
-                    <div>
-                        <label for="tegels" class="block text-sm font-semibold text-gray-700 mb-1">Aantal Tegels</label>
-                        <input type="number" name="tegels" id="tegels" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500 bg-gray-50 py-3" value="0" min="0" onchange="calculateCompletionTime()">
-                        <p class="mt-2 text-sm text-gray-500 italic">Vul het aantal tegels in (0-100)</p>
-                    </div>
-
-                    <div>
-                        <label for="tegels_type" class="block text-sm font-semibold text-gray-700 mb-1">Type Tegels</label>
-                        <select name="tegels_type" id="tegels_type" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500 bg-gray-50 py-3">
-                            <option value="">Selecteer type</option>
-                            <option value="pix100">PIX 100</option>
-                            <option value="pix25">PIX 25</option>
-                            <option value="vlakled">Vlak LED</option>
-                            <option value="patroon">Patroon</option>
-                        </select>
-                        <p class="mt-2 text-sm text-gray-500 italic">Selecteer het type tegels</p>
-                    </div>
+                <div class="mb-4">
+                    <label for="tegels" class="block text-sm font-medium text-gray-700">Aantal tegels</label>
+                    <input type="number" name="tegels" id="tegels" min="0" 
+                           class="mt-1 focus:ring-blue-500 focus:border-blue-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md">
+                </div>
+                
+                <div class="mb-4">
+                    <label for="tegels_type" class="block text-sm font-medium text-gray-700">Type tegels</label>
+                    <select name="tegels_type" id="tegels_type" 
+                            class="mt-1 focus:ring-blue-500 focus:border-blue-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md">
+                        <option value="">Selecteer type</option>
+                        <option value="pix25">Pix 25</option>
+                        <option value="pix100">Pix 100</option>
+                        <option value="vlakled">Vlakled</option>
+                        <option value="patroon">Patroon</option>
+                    </select>
                 </div>
 
-                <div>
-                    <label for="completion_minutes" class="block text-sm font-semibold text-gray-700 mb-1">Benodigde Tijd (min)</label>
-                    <input type="number" name="completion_minutes" id="completion_minutes" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500 bg-gray-50 py-3" placeholder="Automatisch berekend" readonly>
-                    <p class="mt-2 text-sm text-gray-500 italic">Wordt automatisch berekend</p>
+                <div class="mb-4">
+                    <label for="completion_minutes" class="block text-sm font-medium text-gray-700">Benodige tijd (minuten)</label>
+                    <input type="number" name="completion_minutes" id="completion_minutes" min="0" 
+                           class="mt-1 focus:ring-blue-500 focus:border-blue-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md">
                 </div>
 
                 <div class="grid grid-cols-2 gap-4">

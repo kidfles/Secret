@@ -49,7 +49,7 @@ class Location extends Model
             'latitude' => 'required|numeric',
             'longitude' => 'required|numeric',
             'tegels_count' => 'nullable|integer|min:0|max:100',
-            'tegels_type' => 'nullable|string|in:pix100,pix25,vlakled,patroon',
+            'tegels_type' => 'nullable|string|in:pix25,pix100,vlakled,patroon',
             'begin_time' => 'nullable|date_format:H:i',
             'end_time' => 'nullable|date_format:H:i|after_or_equal:begin_time',
             'tegels' => 'nullable|integer|min:0',

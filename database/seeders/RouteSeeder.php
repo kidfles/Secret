@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\DB;
 use App\Models\Route;
 use App\Models\Location;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Schema;
 
 class RouteSeeder extends Seeder
 {
@@ -16,140 +17,174 @@ class RouteSeeder extends Seeder
      */
     public function run(): void
     {
-        // Clear existing routes and pivot table
-        DB::table('route_location')->delete();
-        Route::truncate();
-
-        // Find home location (Nederasselt)
-        $baseLocation = Location::where('name', 'Nederasselt Base')->first();
+        // Check database driver
+        $connection = DB::connection()->getDriverName();
         
-        if (!$baseLocation) {
-            $this->command->error('Error: Base location (Nederasselt) not found');
+        // Clear existing routes and pivot data
+        if ($connection === 'sqlite') {
+            DB::table('route_location')->delete();
+            DB::table('routes')->delete();
+        } else {
+            DB::table('route_location')->truncate();
+            DB::table('routes')->truncate();
+        }
+        
+        // Create 4 routes
+        $routeNames = [
+            'Route A', 'Route B', 'Route C', 'Route D'
+        ];
+        
+        $routes = [];
+        foreach ($routeNames as $name) {
+            // Check which columns exist in the routes table
+            $hasCapacity = Schema::hasColumn('routes', 'capacity');
+            $hasMaxDuration = Schema::hasColumn('routes', 'max_duration_minutes');
+            
+            // Build route data based on available columns
+            $routeData = [
+                'name' => $name,
+                'start_time' => '08:00:00',
+            ];
+            
+            // Add optional columns if they exist
+            if ($hasCapacity) {
+                $routeData['capacity'] = 100; // Maximum capacity per route
+            }
+            
+            if ($hasMaxDuration) {
+                $routeData['max_duration_minutes'] = 480; // 8 hour workday
+            }
+            
+            $routes[] = Route::create($routeData);
+        }
+        
+        // Fetch all locations
+        $locations = Location::all();
+        
+        // Skip assignment if no locations
+        if ($locations->isEmpty()) {
+            $this->command->info('No locations found to assign to routes');
             return;
         }
-
-        // Get locations with capacity >= 3
-        $highCapacityLocations = Location::where('person_capacity', '>=', 3)->get();
         
-        // Create standard route for Amsterdam
-        $route1 = Route::create([
-            'name' => 'Amsterdam Route',
-            'description' => 'Route through Amsterdam Central',
-            'start_time' => '08:00'
-        ]);
+        // Group locations by city for more realistic routes
+        $locationsByCity = $locations->groupBy('city');
         
-        // Get Amsterdam location
-        $amsterdamLocation = Location::where('name', 'Amsterdam Centraal')->first();
-        $rotterdamLocation = Location::where('name', 'Rotterdam Markthal')->first();
+        // Assign locations to routes - try to group by city when possible
+        $routeIndex = 0;
+        $locationOrder = 1;
+        $pivotData = [];
+        $routeStats = [];
         
-        // Add locations to route
-        $this->addLocationsToRoute($route1, [$baseLocation, $amsterdamLocation, $rotterdamLocation, $baseLocation]);
+        // Initialize route stats
+        foreach ($routes as $route) {
+            $routeStats[$route->id] = [
+                'total_tiles' => 0,
+                'location_count' => 0,
+                'total_time' => 0,
+            ];
+        }
         
-        // Create routes for the high capacity locations
-        $routeCounter = 1;
-        $startTimes = ['07:30', '08:00', '08:30', '09:00', '09:30'];
+        // Base coordinates for Nederasselt (starting point for all routes)
+        $startLat = 51.7620;
+        $startLng = 5.7650;
         
-        foreach ($highCapacityLocations as $location) {
-            // Create two routes for each high capacity location
-            for ($i = 0; $i < 2; $i++) {
-                $routeCounter++;
-                $routeName = $location->city . ' Route ' . ($i + 1);
+        // Assign each city's locations to the routes in a round-robin fashion
+        foreach ($locationsByCity as $city => $cityLocations) {
+            foreach ($cityLocations as $location) {
+                $route = $routes[$routeIndex % count($routes)];
                 
-                $route = Route::create([
-                    'name' => $routeName,
-                    'description' => 'Route ' . ($i + 1) . ' through ' . $location->name,
-                    'start_time' => $startTimes[array_rand($startTimes)]
-                ]);
-                
-                // Find another random location to add to the route
-                $randomLocation = Location::where('id', '!=', $location->id)
-                    ->where('id', '!=', $baseLocation->id)
-                    ->inRandomOrder()
-                    ->first();
-                
-                if ($i == 0) {
-                    // First route: Base -> High Capacity Location -> Base
-                    $this->addLocationsToRoute($route, [$baseLocation, $location, $baseLocation]);
+                // Calculate travel time from previous location or start
+                if ($locationOrder === 1) {
+                    // First location in route - calculate from Nederasselt
+                    $travelTimeMinutes = $this->calculateTravelTime($startLat, $startLng, $location->latitude, $location->longitude);
+                    $arrivalTime = Carbon::parse($route->start_time)->addMinutes($travelTimeMinutes)->format('H:i:s');
                 } else {
-                    // Second route: Base -> High Capacity Location -> Random Location -> Base
-                    $this->addLocationsToRoute($route, [$baseLocation, $location, $randomLocation, $baseLocation]);
+                    // Calculate from previous location in this route
+                    $prevLocations = collect($pivotData)->where('route_id', $route->id)->sortByDesc('order');
+                    
+                    if ($prevLocations->count() > 0) {
+                        $prevLocation = $prevLocations->first();
+                        $prevLoc = $locations->firstWhere('id', $prevLocation['location_id']);
+                        $prevCompletionTime = $prevLocation['completion_time'];
+                        
+                        // Calculate travel time from previous location
+                        $travelTimeMinutes = $this->calculateTravelTime(
+                            $prevLoc->latitude, 
+                            $prevLoc->longitude, 
+                            $location->latitude, 
+                            $location->longitude
+                        );
+                        
+                        $arrivalTime = Carbon::parse($prevCompletionTime)->addMinutes($travelTimeMinutes)->format('H:i:s');
+                    } else {
+                        // Fallback if no previous location found
+                        $travelTimeMinutes = $this->calculateTravelTime($startLat, $startLng, $location->latitude, $location->longitude);
+                        $arrivalTime = Carbon::parse($route->start_time)->addMinutes($travelTimeMinutes)->format('H:i:s');
+                    }
                 }
-            }
-        }
-    }
-    
-    /**
-     * Add locations to a route with proper ordering and time calculations
-     */
-    private function addLocationsToRoute($route, $locations)
-    {
-        $order = 1;
-        $currentTime = Carbon::parse($route->start_time ?? '08:00');
-        $previousLocation = null;
-        
-        foreach ($locations as $location) {
-            // Calculate travel time from previous location (if any)
-            $travelTime = null;
-            if ($previousLocation) {
-                // Calculate simple travel time based on distance (30 minutes per 50km)
-                $distance = $this->calculateDistance(
-                    $previousLocation->latitude, 
-                    $previousLocation->longitude, 
-                    $location->latitude, 
-                    $location->longitude
-                );
                 
-                $travelTime = ceil($distance / 50 * 30); // minutes
-                $currentTime = $currentTime->copy()->addMinutes($travelTime);
+                // Calculate completion time
+                $completionTimeMinutes = $location->completion_minutes ?? $location->getCompletionTimeAttribute();
+                $completionTime = Carbon::parse($arrivalTime)->addMinutes($completionTimeMinutes)->format('H:i:s');
+                
+                // Create pivot data
+                $pivotData[] = [
+                    'route_id' => $route->id,
+                    'location_id' => $location->id,
+                    'order' => $locationOrder,
+                    'arrival_time' => $arrivalTime,
+                    'completion_time' => $completionTime,
+                    'travel_time' => $travelTimeMinutes,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ];
+                
+                // Update route stats
+                $routeStats[$route->id]['total_tiles'] += $location->tegels ?? $location->tegels_count ?? 0;
+                $routeStats[$route->id]['location_count']++;
+                $routeStats[$route->id]['total_time'] += $completionTimeMinutes;
+                
+                $locationOrder++;
+                $routeIndex++;
             }
-            
-            // Ensure arrival time respects the location's time window
-            if ($location->begin_time) {
-                $earliestArrival = Carbon::parse($location->begin_time);
-                if ($currentTime->lt($earliestArrival)) {
-                    $currentTime = $earliestArrival->copy();
-                }
-            }
-            
-            // Set arrival time
-            $arrivalTime = $currentTime->format('H:i');
-            
-            // Calculate completion time
-            $completionMinutes = $location->completion_minutes ?? 30; // Default 30 minutes if not specified
-            $completionTime = $currentTime->copy()->addMinutes($completionMinutes)->format('H:i');
-            
-            // Update current time to after completion
-            $currentTime = $currentTime->copy()->addMinutes($completionMinutes);
-            
-            DB::table('route_location')->insert([
-                'route_id' => $route->id,
-                'location_id' => $location->id,
-                'order' => $order,
-                'arrival_time' => $arrivalTime,
-                'completion_time' => $completionTime,
-                'travel_time' => $travelTime,
-                'created_at' => now(),
-                'updated_at' => now()
-            ]);
-            
-            $order++;
-            $previousLocation = $location;
+        }
+        
+        // Insert all pivot data
+        DB::table('route_location')->insert($pivotData);
+        
+        // Output stats
+        $this->command->info('Created ' . count($routes) . ' routes');
+        
+        foreach ($routes as $route) {
+            $stats = $routeStats[$route->id];
+            $this->command->info("{$route->name}: {$stats['location_count']} locations, {$stats['total_tiles']} tiles, {$stats['total_time']} minutes total work");
         }
     }
     
     /**
-     * Calculate distance between two points in kilometers
+     * Calculate travel time between two coordinates
+     * Simple implementation using distance and average speed
      */
-    private function calculateDistance($lat1, $lon1, $lat2, $lon2): float
+    private function calculateTravelTime($lat1, $lng1, $lat2, $lng2, $avgSpeedKmh = 50)
     {
-        $R = 6371; // Earth's radius in km
-        $φ1 = deg2rad($lat1);
-        $φ2 = deg2rad($lat2);
-        $Δφ = deg2rad($lat2 - $lat1);
-        $Δλ = deg2rad($lon2 - $lon1);
-
-        $a = sin($Δφ/2)**2 + cos($φ1)*cos($φ2)*sin($Δλ/2)**2;
-        $c = 2 * atan2(sqrt($a), sqrt(1 - $a));
-        return $R * $c;
+        // Calculate distance in kilometers using Haversine formula
+        $earthRadius = 6371; // km
+        $dLat = deg2rad($lat2 - $lat1);
+        $dLng = deg2rad($lng2 - $lng1);
+        
+        $a = sin($dLat/2) * sin($dLat/2) +
+             cos(deg2rad($lat1)) * cos(deg2rad($lat2)) * 
+             sin($dLng/2) * sin($dLng/2);
+             
+        $c = 2 * atan2(sqrt($a), sqrt(1-$a));
+        $distance = $earthRadius * $c;
+        
+        // Calculate time in minutes
+        $timeHours = $distance / $avgSpeedKmh;
+        $timeMinutes = ceil($timeHours * 60);
+        
+        // Ensure minimum travel time
+        return max(5, $timeMinutes);
     }
 }
