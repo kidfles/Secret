@@ -18,7 +18,7 @@
         
         <!-- New Planning Date Selector (hidden by default) -->
         <div id="new-planning-panel" class="new-planning-panel shadow-sm mb-4" style="display: none;">
-            <form action="{{ route('day-planner.store') }}" method="POST">
+            <form id="new-planning-form" action="{{ route('day-planner.store') }}" method="POST">
                 @csrf
                 <div class="row align-items-center g-3">
                     <div class="col-md-5">
@@ -30,6 +30,7 @@
                             <input type="date" class="form-control border-start-0" 
                                    id="planning-date" name="date" value="{{ date('Y-m-d') }}" required>
                         </div>
+                        <div id="date-validation-message" class="text-danger mt-1" style="display: none;"></div>
                     </div>
                     <div class="col-md-4">
                         <label class="form-label mb-2 fw-medium">Snelkeuze</label>
@@ -52,12 +53,18 @@
                         <button type="button" class="btn btn-light rounded-pill px-4 me-2 shadow-sm" id="cancel-new-planning">
                             <i class="fas fa-times me-1"></i> Annuleren
                         </button>
-                        <button type="submit" class="btn btn-success rounded-pill px-4 shadow-sm">
+                        <button type="submit" class="btn btn-success rounded-pill px-4 shadow-sm" id="submit-new-planning">
                             <i class="fas fa-check me-1"></i> Aanmaken
                         </button>
                     </div>
                 </div>
             </form>
+            <div class="spinner-container text-center py-3" style="display: none;">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Laden...</span>
+                </div>
+                <p class="mt-2 text-muted">Planning aanmaken...</p>
+            </div>
         </div>
         
         <!-- Unified Modern Search Bar -->
@@ -91,59 +98,63 @@
     </div>
 
     <!-- Alerts -->
-    @if (session('success'))
-        <div class="alert alert-success alert-dismissible fade show shadow-sm">
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    <div id="alert-container">
+        @if (session('success'))
+            <div class="alert alert-success alert-dismissible fade show shadow-sm">
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
             {{ session('success') }}
         </div>
     @endif
-    
-    @if (session('error'))
-        <div class="alert alert-danger alert-dismissible fade show shadow-sm">
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+
+        @if (session('error'))
+            <div class="alert alert-danger alert-dismissible fade show shadow-sm">
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
             {{ session('error') }}
         </div>
     @endif
+    </div>
 
     <!-- Days Section - Redesigned Modern UI -->
     <div class="days-section">
         <h2 class="section-title mb-4">Geplande dagen</h2>
         
-        @if(count($plannedDays) > 0)
-            <div class="day-cards">
-                @foreach($plannedDays as $day)
-                    <div class="day-card" onclick="window.location.href='/day-planner/{{ $day['date'] }}'">
-                        <div class="day-card-content">
-                            <div class="day-info">
-                                <div class="date-badge">
-                                    <span class="day-num">{{ \Carbon\Carbon::parse($day['date'])->format('d') }}</span>
-                                    <span class="month">{{ \Carbon\Carbon::parse($day['date'])->format('M') }}</span>
-                                </div>
-                                <div class="day-details">
-                                    <h3 class="day-title">{{ \Carbon\Carbon::parse($day['date'])->format('l') }}</h3>
-                                    <div class="route-count">
-                                        <i class="fas fa-route me-2"></i>
-                                        <span>{{ $day['routes_count'] }} {{ $day['routes_count'] == 1 ? 'route' : 'routes' }}</span>
+        <div id="day-cards-container">
+            @if(count($plannedDays) > 0)
+                <div class="day-cards">
+                    @foreach($plannedDays as $day)
+                        <div class="day-card">
+                            <div class="day-card-content">
+                                <div class="day-info">
+                                    <div class="date-badge">
+                                        <span class="day-num">{{ \Carbon\Carbon::parse($day['date'])->format('d') }}</span>
+                                        <span class="month">{{ \Carbon\Carbon::parse($day['date'])->format('M') }}</span>
+                                    </div>
+                                    <div class="day-details">
+                                        <h3 class="day-title">{{ \Carbon\Carbon::parse($day['date'])->format('l') }}</h3>
+                                        <div class="route-count">
+                                            <i class="fas fa-route me-2"></i>
+                                            <span>{{ $day['routes_count'] }} {{ $day['routes_count'] == 1 ? 'route' : 'routes' }}</span>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                            <div class="day-actions">
-                                <a href="{{ url('/day-planner/' . $day['date'] . '/edit') }}" 
-                                   class="edit-button" aria-label="Bewerken">
-                                    <i class="fas fa-edit"></i>
-                                </a>
+                                <div class="day-actions">
+                                    <a href="{{ route('route-optimizer.index') }}" 
+                                       class="edit-button" aria-label="Bewerken" data-date="{{ $day['date'] }}">
+                                        <i class="fas fa-edit"></i>
+                                    </a>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                @endforeach
-            </div>
-        @else
-            <div class="empty-state">
-                <img src="https://cdn-icons-png.flaticon.com/512/6133/6133991.png" alt="Empty calendar" class="empty-icon">
-                <h3>Nog geen dagen gepland</h3>
-                <p>Creëer een nieuwe planning of zoek naar een datum hierboven om te beginnen</p>
-            </div>
-        @endif
+                    @endforeach
+                </div>
+            @else
+                <div class="empty-state">
+                    <img src="https://cdn-icons-png.flaticon.com/512/6133/6133991.png" alt="Empty calendar" class="empty-icon">
+                    <h3>Nog geen dagen gepland</h3>
+                    <p>Creëer een nieuwe planning om te beginnen. Daarna kun je locaties toevoegen in de locatiebeheerder.</p>
+                </div>
+            @endif
+        </div>
     </div>
 </div>
 
@@ -220,6 +231,21 @@
     
     .btn-quick-date:active {
         transform: translateY(0);
+    }
+    
+    .spinner-container {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(255, 255, 255, 0.9);
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        z-index: 10;
+        border-radius: 12px;
     }
     
     .search-container {
@@ -489,6 +515,26 @@
         margin: 0 auto;
     }
     
+    /* Custom alert styles */
+    .custom-alert {
+        border-left: 4px solid;
+        border-radius: 8px;
+        animation: slideIn 0.3s ease;
+    }
+    
+    .custom-alert.alert-success {
+        border-left-color: #28a745;
+    }
+    
+    .custom-alert.alert-danger {
+        border-left-color: #dc3545;
+    }
+    
+    @keyframes slideIn {
+        from { opacity: 0; transform: translateY(-10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+    
     /* Media queries */
     @media (max-width: 768px) {
         .unified-search {
@@ -544,6 +590,10 @@
         const newPlanningBtn = document.getElementById('new-planning-btn');
         const newPlanningPanel = document.getElementById('new-planning-panel');
         const cancelNewPlanning = document.getElementById('cancel-new-planning');
+        const newPlanningForm = document.getElementById('new-planning-form');
+        const spinnerContainer = document.querySelector('.spinner-container');
+        const dateValidationMessage = document.getElementById('date-validation-message');
+        const plannedDates = {!! json_encode($plannedDays->pluck('date')) !!};
         
         newPlanningBtn.addEventListener('click', function() {
             newPlanningPanel.style.display = 'block';
@@ -555,7 +605,79 @@
         
         cancelNewPlanning.addEventListener('click', function() {
             newPlanningPanel.style.display = 'none';
+            dateValidationMessage.style.display = 'none';
+            newPlanningForm.reset();
         });
+        
+        // Check if date already has a planning
+        function isDatePlanned(date) {
+            return plannedDates.includes(date);
+        }
+        
+        // Handle form submission - now using regular form submission, not AJAX
+        newPlanningForm.addEventListener('submit', function(e) {
+            const date = document.getElementById('planning-date').value;
+            
+            // Check if the date already has a planning
+            if (isDatePlanned(date)) {
+                e.preventDefault();
+                dateValidationMessage.textContent = 'Voor deze datum bestaat al een planning.';
+                dateValidationMessage.style.display = 'block';
+                return false;
+            }
+            
+            // Show loading spinner
+            spinnerContainer.style.display = 'flex';
+            
+            // Continue with form submission - it will follow the redirect from the controller
+        });
+        
+        // Helper function to show an alert
+        function showAlert(type, message) {
+            const alertContainer = document.getElementById('alert-container');
+            const alertHtml = `
+                <div class="alert alert-${type} alert-dismissible fade show shadow-sm custom-alert">
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    ${message}
+                </div>
+            `;
+            
+            alertContainer.innerHTML = alertHtml;
+            
+            // Auto-dismiss after 5 seconds
+            setTimeout(() => {
+                const alert = document.querySelector('.alert');
+                if (alert) {
+                    alert.classList.remove('show');
+                    setTimeout(() => {
+                        alertContainer.innerHTML = '';
+                    }, 300);
+                }
+            }, 5000);
+        }
+        
+        // Helper function to refresh the day cards
+        function refreshDayCards() {
+            fetch('{{ route('day-planner.index') }}', {
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
+            .then(response => response.text())
+            .then(html => {
+                // We need to extract the day cards section from the HTML
+                const tempElement = document.createElement('div');
+                tempElement.innerHTML = html;
+                
+                const newDayCards = tempElement.querySelector('#day-cards-container');
+                if (newDayCards) {
+                    document.getElementById('day-cards-container').innerHTML = newDayCards.innerHTML;
+                }
+            })
+            .catch(error => {
+                console.error('Error refreshing day cards:', error);
+            });
+        }
         
         // Quick date selection in new planning panel
         document.querySelectorAll('.btn-quick-date').forEach(button => {
@@ -565,6 +687,14 @@
                 date.setDate(date.getDate() + offset);
                 const formattedDate = date.toISOString().slice(0, 10);
                 document.getElementById('planning-date').value = formattedDate;
+                
+                // Check date validation right away
+                if (isDatePlanned(formattedDate)) {
+                    dateValidationMessage.textContent = 'Voor deze datum bestaat al een planning.';
+                    dateValidationMessage.style.display = 'block';
+                } else {
+                    dateValidationMessage.style.display = 'none';
+                }
                 
                 // Visual feedback - highlight the selected button
                 document.querySelectorAll('.btn-quick-date').forEach(btn => {
@@ -579,24 +709,36 @@
             });
         });
         
+        // Check for duplicate on date input change
+        document.getElementById('planning-date').addEventListener('change', function() {
+            const selectedDate = this.value;
+            
+            if (isDatePlanned(selectedDate)) {
+                dateValidationMessage.textContent = 'Voor deze datum bestaat al een planning.';
+                dateValidationMessage.style.display = 'block';
+            } else {
+                dateValidationMessage.style.display = 'none';
+            }
+        });
+        
         // Date navigation shortcuts
         document.getElementById('today-btn').addEventListener('click', function() {
             const today = new Date().toISOString().slice(0, 10);
-            window.location.href = '/day-planner/' + today;
+            window.location.href = '{{ url("/day-planner") }}/' + today;
         });
         
         document.getElementById('yesterday-btn').addEventListener('click', function() {
             const yesterday = new Date();
             yesterday.setDate(yesterday.getDate() - 1);
             const formattedDate = yesterday.toISOString().slice(0, 10);
-            window.location.href = '/day-planner/' + formattedDate;
+            window.location.href = '{{ url("/day-planner") }}/' + formattedDate;
         });
         
         document.getElementById('tomorrow-btn').addEventListener('click', function() {
             const tomorrow = new Date();
             tomorrow.setDate(tomorrow.getDate() + 1);
             const formattedDate = tomorrow.toISOString().slice(0, 10);
-            window.location.href = '/day-planner/' + formattedDate;
+            window.location.href = '{{ url("/day-planner") }}/' + formattedDate;
         });
         
         // Calendar picker trigger
@@ -607,7 +749,7 @@
         // Hidden date picker
         document.getElementById('hidden-date-picker').addEventListener('change', function() {
             if (this.value) {
-                window.location.href = '/day-planner/' + this.value;
+                window.location.href = '{{ url("/day-planner") }}/' + this.value;
             }
         });
         
@@ -685,7 +827,7 @@
                     document.querySelectorAll('.search-result-item').forEach(item => {
                         item.addEventListener('click', function() {
                             const selectedDate = this.getAttribute('data-date');
-                            window.location.href = '/day-planner/' + selectedDate;
+                            window.location.href = '{{ url("/day-planner") }}/' + selectedDate;
                         });
                     });
                 } else {
@@ -715,7 +857,77 @@
                 !newPlanningPanel.contains(event.target) && 
                 !newPlanningBtn.contains(event.target)) {
                 newPlanningPanel.style.display = 'none';
+                dateValidationMessage.style.display = 'none';
+                newPlanningForm.reset();
             }
+        });
+        
+        // AJAX helper to set date in session
+        function setDateInSession(date, callback) {
+            const csrfToken = document.querySelector('input[name="_token"]').value;
+            fetch('/api/set-selected-date', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken,
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: JSON.stringify({ date: date })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (callback) callback(data);
+            })
+            .catch(error => {
+                console.error('Error setting date:', error);
+                // Continue anyway
+                if (callback) callback({});
+            });
+        }
+        
+        // Update click handler for day cards
+        document.querySelectorAll('.day-card').forEach(card => {
+            card.addEventListener('click', function(e) {
+                // Don't process if edit button was clicked
+                if (e.target.closest('.edit-button')) {
+                    return;
+                }
+                
+                e.preventDefault();
+                // Find the date from either the card or its edit button
+                const editButton = this.querySelector('.edit-button');
+                const date = editButton ? editButton.getAttribute('data-date') : null;
+                
+                if (!date) {
+                    console.error("Could not find date for this card");
+                    return;
+                }
+                
+                setDateInSession(date, function() {
+                    window.location.href = '{{ route('route-optimizer.index') }}';
+                });
+            });
+        });
+        
+        // Update click handler for edit buttons
+        document.querySelectorAll('.day-card .edit-button').forEach(button => {
+            button.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                const date = this.getAttribute('data-date');
+                
+                if (!date || date === "undefined" || date === "") {
+                    console.error("Missing date attribute:", this);
+                    return;
+                }
+                
+                // Set date in session and navigate to routes page
+                setDateInSession(date, function() {
+                    window.location.href = '{{ route('route-optimizer.index') }}';
+                });
+            });
         });
     });
 </script>

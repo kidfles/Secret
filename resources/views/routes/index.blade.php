@@ -8,6 +8,45 @@
 <link rel="stylesheet" href="{{ asset('css/routes.css') }}">
 
 <div class="max-w-[1920px] mx-auto px-4 py-8">
+  {{-- Date Selection Header --}}
+  @if(isset($selectedDate))
+  <div class="mb-6 bg-white rounded-lg shadow p-4 border-l-4 border-blue-500">
+    <div class="flex justify-between items-center">
+      <div>
+        <h2 class="text-xl font-semibold text-gray-800">
+          <i class="fas fa-calendar-day mr-2 text-blue-500"></i>
+          Routes voor {{ $formattedDate }}
+        </h2>
+        <p class="text-sm text-gray-600 mt-1">
+          Alleen routes gepland voor deze datum worden getoond
+        </p>
+      </div>
+      <a href="{{ route('day-planner.index') }}" class="bg-blue-100 hover:bg-blue-200 text-blue-800 px-4 py-2 rounded-md flex items-center">
+        <i class="fas fa-calendar-alt mr-2"></i>
+        Andere datum kiezen
+      </a>
+    </div>
+  </div>
+  @else
+  <div class="mb-6 bg-white rounded-lg shadow p-4 border-l-4 border-yellow-500">
+    <div class="flex justify-between items-center">
+      <div>
+        <h2 class="text-xl font-semibold text-gray-800">
+          <i class="fas fa-exclamation-triangle mr-2 text-yellow-500"></i>
+          Geen datum geselecteerd
+        </h2>
+        <p class="text-sm text-gray-600 mt-1">
+          Alle routes worden getoond. Kies een datum om gefilterde routes te zien.
+        </p>
+      </div>
+      <a href="{{ route('day-planner.index') }}" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-md flex items-center">
+        <i class="fas fa-calendar-alt mr-2"></i>
+        Selecteer een datum
+      </a>
+    </div>
+  </div>
+  @endif
+
   {{-- success / error alerts --}}
   @if(session('error'))
     <div class="mb-4 p-4 bg-red-100 border-l-4 border-red-500 text-red-700 rounded-md">

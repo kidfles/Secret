@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Cache;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 class RouteController extends Controller
 {
@@ -18,28 +19,27 @@ class RouteController extends Controller
 
     public function index()
     {
+        // Get selected date from session
+        $selectedDate = session('selected_date');
+
         // Enable query logging for debugging
         DB::enableQueryLog();
         
-        // Check cache first
-        $cacheKey = self::CACHE_KEY . '_index';
-        if (Cache::has($cacheKey)) {
-            $data = Cache::get($cacheKey);
-            
-            // Add query debugging info
-            $queryLog = DB::getQueryLog();
-            $queryCount = count($queryLog);
-            $data['queryCount'] = $queryCount;
-            $data['queryLog'] = $queryLog;
-            $data['fromCache'] = true;
-            
-            return view('routes.index', $data);
+        // Use either date or scheduled_date based on which one exists
+        $dateColumn = Schema::hasColumn('routes', 'date') ? 'date' : 'scheduled_date';
+        
+        // Prepare the routes query with date filtering if available
+        $routesQuery = Route::with(['locations' => function($query) {
+            $query->orderBy('route_location.order');
+        }]);
+        
+        // Apply date filter if we have a selected date
+        if ($selectedDate) {
+            $routesQuery->whereDate($dateColumn, $selectedDate);
         }
         
-        // Eager load relationships to prevent N+1 query problems
-        $routes = Route::with(['locations' => function($query) {
-            $query->orderBy('route_location.order');
-        }])->get();
+        // Execute query
+        $routes = $routesQuery->get();
         
         // Pre-calculate tile totals and stats for each route to avoid N+1 queries
         $routeStats = [];
@@ -79,58 +79,37 @@ class RouteController extends Controller
         $maxTiles = count($routeStats) > 0 ? max(array_column($routeStats, 'total_tiles')) : 0;
         $minTiles = count($routeStats) > 0 ? min(array_column($routeStats, 'total_tiles')) : 0;
         $maxDiff = $maxTiles - $minTiles;
-
-        // palette for up to 20 routes
+        
+        // Create a list of colors for routes on the map
         $routeColors = [
             '#FF0000','#00FF00','#0000FF','#FFA500','#800080',
             '#008080','#FFFF00','#FF00FF','#00FFFF','#A52A2A',
             '#4682B4','#32CD32','#FF6347','#8A2BE2','#2E8B57',
             '#DAA520','#D2691E','#9932CC','#FF4500','#696969',
-            // Add more colors to avoid array index issues
+            // Additional colors
             '#556B2F','#483D8B','#CD5C5C','#4B0082','#FF8C00',
-            '#6B8E23','#BC8F8F','#8B4513','#5F9EA0','#708090',
-            '#6A5ACD','#2F4F4F','#7CFC00','#8B0000','#ADFF2F',
-            '#B22222','#9ACD32','#CD853F','#FA8072','#20B2AA',
-            '#778899','#F08080','#4169E1','#3CB371','#808000',
-            '#9370DB','#66CDAA','#F4A460','#8A2BE2','#6495ED'
         ];
         
-        // Add empty locations data
-        $emptyLocations = Location::whereDoesntHave('routes')->get();
+        // Pass the selected date to the view
+        $formattedDate = $selectedDate ? Carbon::parse($selectedDate)->format('d-m-Y') : null;
         
-        // Calculate unused tiles using both fields
-        $unusedTiles = 0;
-        foreach ($emptyLocations as $location) {
-            $unusedTiles += $location->tegels ?? $location->tegels_count ?? 0;
-        }
-        
-        // Calculate total tiles using both fields
-        $totalTiles = 0;
-        foreach (Location::all() as $location) {
-            $totalTiles += $location->tegels ?? $location->tegels_count ?? 0;
-        }
-        
-        $data = compact(
-            'routes',
-            'routeColors',
-            'routeStats',
-            'totalTilesAll',
-            'avgTiles',
-            'maxDiff',
-            'emptyLocations',
-            'unusedTiles',
-            'totalTiles'
-        );
-        
-        // Store in cache
-        Cache::put($cacheKey, $data, self::CACHE_TTL);
-        
-        // Add query debugging info
+        // Get query debugging info
         $queryLog = DB::getQueryLog();
         $queryCount = count($queryLog);
-        $data['queryCount'] = $queryCount;
-        $data['queryLog'] = $queryLog;
-        $data['fromCache'] = false;
+        
+        $data = [
+            'routes' => $routes,
+            'routeStats' => $routeStats,
+            'totalTilesAll' => $totalTilesAll,
+            'avgTiles' => $avgTiles,
+            'maxDiff' => $maxDiff,
+            'routeColors' => $routeColors,
+            'queryCount' => $queryCount,
+            'queryLog' => $queryLog,
+            'fromCache' => false,
+            'selectedDate' => $selectedDate,
+            'formattedDate' => $formattedDate
+        ];
         
         return view('routes.index', $data);
     }
@@ -151,8 +130,21 @@ class RouteController extends Controller
             'address'   => 'Broekstraat 68, Nederasselt',
         ];
     
-        // Fetch locations efficiently with single query
-        $locations = Location::select(['id', 'name', 'latitude', 'longitude', 'address', 'tegels', 'tegels_count', 'tegels_type', 'begin_time', 'end_time', 'completion_minutes'])->get();
+        // Get selected date from session
+        $selectedDate = session('selected_date');
+    
+        // Fetch locations efficiently with single query, filtered by date if available
+        $locationsQuery = Location::select(['id', 'name', 'latitude', 'longitude', 'address', 'tegels', 'tegels_count', 'tegels_type', 'begin_time', 'end_time', 'completion_minutes', 'date']);
+        
+        // Filter by date if a date is selected
+        if ($selectedDate) {
+            $locationsQuery->where(function($query) use ($selectedDate) {
+                $query->where('date', $selectedDate)
+                      ->orWhereNull('date');
+            });
+        }
+        
+        $locations = $locationsQuery->get();
     
         if ($locations->isEmpty()) {
             return redirect()->back()->with('error', 'No locations available to generate routes.');

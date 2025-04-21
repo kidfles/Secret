@@ -12,14 +12,14 @@ Route::get('/', function () {
 });
 
 // Route Optimizer routes
-Route::middleware(['require.date'])->group(function () {
+Route::middleware(['require-date'])->group(function () {
     Route::get('route-optimizer', [RouteOptimizerController::class, 'index'])->name('route-optimizer.index');
     Route::post('route-optimizer', [RouteOptimizerController::class, 'store'])->name('route-optimizer.store');
     Route::delete('route-optimizer/{location}', [RouteOptimizerController::class, 'destroy'])->name('route-optimizer.destroy');
 });
 
 // Route management routes
-Route::middleware(['require.date'])->group(function () {
+Route::middleware(['require-date'])->group(function () {
     Route::get('routes', [RouteController::class, 'index'])->name('routes.index');
     Route::get('routes/create', [RouteController::class, 'create'])->name('routes.create');
     Route::post('routes', [RouteController::class, 'store'])->name('routes.store');
@@ -35,7 +35,7 @@ Route::middleware(['require.date'])->group(function () {
 });
 
 // Route Approval routes
-Route::middleware(['require.date'])->group(function () {
+Route::middleware(['require-date'])->group(function () {
     Route::get('routes/approval', [RouteApprovalController::class, 'index'])->name('routes.approval.index');
     Route::get('routes/approval/create', [RouteApprovalController::class, 'create'])->name('routes.approval.create');
     Route::post('routes/approval/schedule', [RouteApprovalController::class, 'schedule'])->name('routes.approval.schedule');
@@ -52,3 +52,10 @@ Route::get('day-planner/{date}', [DayPlannerController::class, 'show'])->name('d
 Route::get('day-planner/{date}/edit', [DayPlannerController::class, 'edit'])->name('day-planner.edit')->where('date', '[^/]+');
 Route::put('day-planner/{date}', [DayPlannerController::class, 'update'])->name('day-planner.update')->where('date', '[^/]+');
 Route::delete('day-planner/{date}', [DayPlannerController::class, 'destroy'])->name('day-planner.destroy')->where('date', '[^/]+');
+
+// API route for setting selected date
+Route::post('api/set-selected-date', function (Illuminate\Http\Request $request) {
+    $request->validate(['date' => 'required|date_format:Y-m-d']);
+    session(['selected_date' => $request->date]);
+    return response()->json(['success' => true]);
+});

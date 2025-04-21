@@ -4,9 +4,11 @@ namespace App\Http\Controllers;
 
 use App\Models\Route;
 use App\Models\Location;
+use App\Models\DayPlanning;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Schema;
 
 class DayPlannerController extends Controller
 {
@@ -20,16 +22,17 @@ class DayPlannerController extends Controller
             return redirect()->route('day-planner.show', $request->date);
         }
         
-        $plannedDays = Route::select('date')
-            ->distinct()
-            ->whereNotNull('date')
-            ->orderBy('date', 'asc')
+        // Get all day plannings
+        $plannedDays = DayPlanning::orderBy('date', 'asc')
             ->get()
-            ->map(function ($item) {
+            ->map(function ($planning) {
+                // Use either date or scheduled_date based on which one exists
+                $dateColumn = Schema::hasColumn('routes', 'date') ? 'date' : 'scheduled_date';
+                
                 return [
-                    'date' => $item->date,
-                    'formatted_date' => Carbon::parse($item->date)->format('d-m-Y'),
-                    'routes_count' => Route::where('date', $item->date)->count()
+                    'date' => $planning->date,
+                    'formatted_date' => Carbon::parse($planning->date)->format('d-m-Y'),
+                    'routes_count' => Route::where($dateColumn, $planning->date)->count()
                 ];
             });
 
@@ -53,17 +56,24 @@ class DayPlannerController extends Controller
             'date' => 'required|date',
         ]);
 
-        // Check if we already have routes for this date
-        $existingRoutes = Route::whereDate('start_date', $validated['date'])->count();
-        if ($existingRoutes > 0) {
-            return redirect()
-                ->route('day-planner.edit', $validated['date'])
-                ->with('info', 'Er zijn al routes gepland voor deze datum.');
-        }
+        // Format date for storage
+        $formattedDate = Carbon::parse($validated['date'])->format('Y-m-d');
+        
+        // Create or update a day planning record
+        DayPlanning::updateOrCreate(
+            ['date' => $formattedDate],
+            ['notes' => $request->notes ?? null]
+        );
 
+        // Store the selected date in the session
+        session(['selected_date' => $formattedDate]);
+
+        $displayDate = Carbon::parse($formattedDate)->format('d-m-Y');
+        
+        // Redirect to locations (route-optimizer) instead of routes
         return redirect()
-            ->route('day-planner.edit', $validated['date'])
-            ->with('success', 'Nieuwe dagplanning aangemaakt.');
+            ->route('route-optimizer.index')
+            ->with('success', 'Nieuwe dagplanning aangemaakt voor ' . $displayDate . '. U kunt nu locaties toevoegen.');
     }
 
     /**
@@ -76,12 +86,19 @@ class DayPlannerController extends Controller
         // Store the selected date in the session
         session(['selected_date' => $date]);
         
-        $routes = Route::where('date', $date)->orderBy('created_at', 'asc')->get();
+        // Find or create the day planning
+        $dayPlanning = DayPlanning::firstOrCreate(['date' => $date]);
         
-        $prevDate = Route::where('date', '<', $date)->orderBy('date', 'desc')->first()?->date;
-        $nextDate = Route::where('date', '>', $date)->orderBy('date', 'asc')->first()?->date;
+        // Use either date or scheduled_date based on which one exists
+        $dateColumn = Schema::hasColumn('routes', 'date') ? 'date' : 'scheduled_date';
         
-        return view('day-planner.show', compact('date', 'routes', 'prevDate', 'nextDate'));
+        $routes = Route::where($dateColumn, $date)->orderBy('created_at', 'asc')->get();
+        
+        // Get previous and next planned days
+        $prevDate = DayPlanning::where('date', '<', $date)->orderBy('date', 'desc')->first()?->date;
+        $nextDate = DayPlanning::where('date', '>', $date)->orderBy('date', 'asc')->first()?->date;
+        
+        return view('day-planner.show', compact('date', 'routes', 'prevDate', 'nextDate', 'dayPlanning'));
     }
 
     /**
@@ -89,11 +106,25 @@ class DayPlannerController extends Controller
      */
     public function edit($date)
     {
+        // Debug the date parameter
+        if (empty($date)) {
+            abort(400, 'Missing date parameter');
+        }
+        
         $date = Carbon::parse($date)->format('Y-m-d');
         
-        $routes = Route::where('date', $date)->orderBy('created_at', 'asc')->get();
+        // Store the selected date in the session
+        session(['selected_date' => $date]);
         
-        return view('day-planner.edit', compact('date', 'routes'));
+        // Find or create the day planning
+        $dayPlanning = DayPlanning::firstOrCreate(['date' => $date]);
+        
+        // Use either date or scheduled_date based on which one exists
+        $dateColumn = Schema::hasColumn('routes', 'date') ? 'date' : 'scheduled_date';
+        
+        $routes = Route::where($dateColumn, $date)->orderBy('created_at', 'asc')->get();
+        
+        return view('day-planner.edit', compact('date', 'routes', 'dayPlanning'));
     }
 
     /**
@@ -111,14 +142,35 @@ class DayPlannerController extends Controller
         try {
             DB::beginTransaction();
             
-            $routes = Route::where('date', $oldDate)->get();
+            // Update or create day planning record for the new date
+            DayPlanning::updateOrCreate(
+                ['date' => $newDate],
+                ['notes' => $request->notes ?? null]
+            );
+            
+            // Use either date or scheduled_date based on which one exists
+            $dateColumn = Schema::hasColumn('routes', 'date') ? 'date' : 'scheduled_date';
+            
+            $routes = Route::where($dateColumn, $oldDate)->get();
             
             foreach ($routes as $route) {
-                $route->date = $newDate;
+                $route->$dateColumn = $newDate;
                 $route->save();
             }
             
+            // If no routes remain for the old date and it's different from the new date,
+            // delete the old day planning
+            if ($oldDate !== $newDate) {
+                $oldPlanning = DayPlanning::where('date', $oldDate)->first();
+                if ($oldPlanning && Route::where($dateColumn, $oldDate)->count() === 0) {
+                    $oldPlanning->delete();
+                }
+            }
+            
             DB::commit();
+            
+            // Update the selected date in the session
+            session(['selected_date' => $newDate]);
             
             return redirect()->route('day-planner.show', $newDate)
                 ->with('success', 'Dagplanning is bijgewerkt en verplaatst naar ' . Carbon::parse($newDate)->format('d-m-Y'));
@@ -140,7 +192,13 @@ class DayPlannerController extends Controller
         try {
             DB::beginTransaction();
             
-            $routes = Route::where('date', $date)->get();
+            // Delete the day planning record
+            DayPlanning::where('date', $date)->delete();
+            
+            // Use either date or scheduled_date based on which one exists
+            $dateColumn = Schema::hasColumn('routes', 'date') ? 'date' : 'scheduled_date';
+            
+            $routes = Route::where($dateColumn, $date)->get();
             
             foreach ($routes as $route) {
                 $route->delete();

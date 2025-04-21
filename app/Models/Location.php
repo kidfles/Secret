@@ -26,6 +26,7 @@ class Location extends Model
         'end_time',
         'completion_minutes',
         'tegels',
+        'date',
     ];
 
     protected $casts = [
@@ -36,6 +37,7 @@ class Location extends Model
         'begin_time' => 'datetime',
         'end_time' => 'datetime',
         'tegels' => 'integer',
+        'date' => 'date',
     ];
 
     public static function rules(): array
@@ -54,6 +56,7 @@ class Location extends Model
             'end_time' => 'nullable|date_format:H:i|after_or_equal:begin_time',
             'tegels' => 'nullable|integer|min:0',
             'completion_minutes' => 'nullable|integer|min:0',
+            'date' => 'nullable|date',
         ];
     }
 

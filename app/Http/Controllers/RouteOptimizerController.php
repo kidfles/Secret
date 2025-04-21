@@ -6,6 +6,8 @@ use App\Models\Location;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Carbon\Carbon;
+use Illuminate\Support\Facades\Schema;
 
 class RouteOptimizerController extends Controller
 {
@@ -14,8 +16,50 @@ class RouteOptimizerController extends Controller
      */
     public function index()
     {
-        $locations = Location::orderBy('name')->get();
-        return view('route-optimizer.index', compact('locations'));
+        // Get selected date from session
+        $selectedDate = session('selected_date');
+        
+        // Get all locations first but filtered by date if available
+        $locationsQuery = Location::orderBy('name');
+        if ($selectedDate) {
+            $locationsQuery->where(function($query) use ($selectedDate) {
+                $query->where('date', $selectedDate)
+                      ->orWhereNull('date');
+            });
+        }
+        $allLocations = $locationsQuery->get();
+        
+        // Use either date or scheduled_date based on which one exists
+        $dateColumn = Schema::hasColumn('routes', 'date') ? 'date' : 'scheduled_date';
+        
+        if ($selectedDate) {
+            // If we have a date filter, show only unassigned locations and 
+            // locations assigned to routes with this date
+            $locationsForDate = Location::whereHas('routes', function($query) use ($selectedDate, $dateColumn) {
+                $query->whereDate($dateColumn, $selectedDate);
+            })->orderBy('name')->get();
+            
+            // Only show unassigned locations that match the date filter
+            $unassignedLocations = Location::whereDoesntHave('routes')
+                ->where(function($query) use ($selectedDate) {
+                    $query->where('date', $selectedDate)
+                          ->orWhereNull('date');
+                })
+                ->orderBy('name')
+                ->get();
+            
+            // Combine both collections
+            $locations = $locationsForDate->merge($unassignedLocations);
+            
+            // Format date for display
+            $formattedDate = Carbon::parse($selectedDate)->format('d-m-Y');
+            
+            return view('route-optimizer.index', compact('locations', 'allLocations', 'selectedDate', 'formattedDate'));
+        } else {
+            // If no date filter, show all locations
+            $locations = $allLocations;
+            return view('route-optimizer.index', compact('locations', 'allLocations'));
+        }
     }
 
     /**
@@ -46,6 +90,7 @@ class RouteOptimizerController extends Controller
                 'begin_time' => 'nullable|date_format:H:i',
                 'end_time' => 'nullable|date_format:H:i|after_or_equal:begin_time',
                 'completion_minutes' => 'nullable|integer|min:0',
+                'date' => 'nullable|date',
             ]);
 
             // Convert empty strings to null for time fields
@@ -55,6 +100,11 @@ class RouteOptimizerController extends Controller
             
             if (empty($validated['end_time'])) {
                 $validated['end_time'] = null;
+            }
+            
+            // If date is not provided but selected_date is in session, use that
+            if (empty($validated['date']) && session()->has('selected_date')) {
+                $validated['date'] = session('selected_date');
             }
             
             // If tegels is empty or zero, ensure it's set to zero
@@ -105,7 +155,8 @@ class RouteOptimizerController extends Controller
      */
     public function edit(string $id)
     {
-        //
+        $location = Location::findOrFail($id);
+        return view('route-optimizer.edit', compact('location'));
     }
 
     /**
@@ -113,7 +164,68 @@ class RouteOptimizerController extends Controller
      */
     public function update(Request $request, string $id)
     {
-        //
+        try {
+            $location = Location::findOrFail($id);
+            
+            $validated = $request->validate([
+                'name' => 'required|string|max:255',
+                'street' => 'required|string|max:255',
+                'house_number' => 'required|string|max:10',
+                'city' => 'required|string|max:255',
+                'postal_code' => 'required|string|max:10',
+                'latitude' => 'required|numeric',
+                'longitude' => 'required|numeric',
+                'person_capacity' => 'required|integer|min:1',
+                'tegels' => 'nullable|integer|min:0',
+                'tegels_type' => 'nullable|string|in:pix25,pix100,vlakled,patroon',
+                'begin_time' => 'nullable|date_format:H:i',
+                'end_time' => 'nullable|date_format:H:i|after_or_equal:begin_time',
+                'completion_minutes' => 'nullable|integer|min:0',
+                'date' => 'nullable|date',
+            ]);
+
+            // Convert empty strings to null for time fields
+            if (empty($validated['begin_time'])) {
+                $validated['begin_time'] = null;
+            }
+            
+            if (empty($validated['end_time'])) {
+                $validated['end_time'] = null;
+            }
+            
+            // If tegels is empty or zero, ensure it's set to zero
+            $validated['tegels'] = $validated['tegels'] ?? 0;
+            
+            // If tegels is zero, clear tegels_type
+            if ($validated['tegels'] == 0) {
+                $validated['tegels_type'] = null;
+            }
+            
+            // Auto-calculate completion_minutes if not provided
+            if (empty($validated['completion_minutes']) && $validated['tegels'] > 0) {
+                $baseDuration = 40; // Base 40 minutes
+                $additionalTime = ceil($validated['tegels'] * 1.5); // 1.5 minutes per tegel, rounded up
+                $validated['completion_minutes'] = $baseDuration + $additionalTime;
+            }
+
+            // Generate address field automatically
+            $validated['address'] = $validated['street'] . ' ' . $validated['house_number'] . ', ' . $validated['city'];
+
+            // For backward compatibility with older code, set tegels_count to the same value as tegels
+            $validated['tegels_count'] = $validated['tegels'];
+
+            $location->update($validated);
+
+            // Clear all route-related caches to ensure fresh data
+            Cache::forget('routes');
+            Cache::forget('routes_index');
+
+            return redirect()->route('route-optimizer.index')
+                ->with('success', 'Location updated successfully!');
+        } catch (\Exception $e) {
+            return redirect()->route('route-optimizer.index')
+                ->with('error', 'Error updating location: ' . $e->getMessage());
+        }
     }
 
     /**

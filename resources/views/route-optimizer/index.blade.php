@@ -2,9 +2,60 @@
 
 @section('content')
 <div class="container mx-auto px-4 py-8">
+    {{-- Date Selection Header --}}
+    @if(isset($selectedDate))
+    <div class="mb-6 bg-white shadow-lg rounded-lg p-4 border-l-4 border-blue-500">
+        <div class="flex justify-between items-center">
+            <div>
+                <h2 class="text-xl font-bold text-gray-800">
+                    <i class="fas fa-calendar-day mr-2 text-blue-500"></i>
+                    Locaties voor {{ $formattedDate }}
+                </h2>
+                <p class="text-sm text-gray-600 mt-1">
+                    U ziet locaties die voor deze datum zijn ingepland en ongebruikte locaties
+                </p>
+            </div>
+            <a href="{{ route('day-planner.index') }}" class="bg-blue-100 hover:bg-blue-200 text-blue-800 px-4 py-2 rounded-md flex items-center">
+                <i class="fas fa-calendar-alt mr-2"></i>
+                Andere datum kiezen
+            </a>
+        </div>
+    </div>
+    @else
+    <div class="mb-6 bg-white shadow-lg rounded-lg p-4 border-l-4 border-yellow-500">
+        <div class="flex justify-between items-center">
+            <div>
+                <h2 class="text-xl font-bold text-gray-800">
+                    <i class="fas fa-exclamation-triangle mr-2 text-yellow-500"></i>
+                    Geen datum geselecteerd
+                </h2>
+                <p class="text-sm text-gray-600 mt-1">
+                    Alle locaties worden getoond. Kies een datum om gefilterde locaties te zien.
+                </p>
+            </div>
+            <a href="{{ route('day-planner.index') }}" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-md flex items-center">
+                <i class="fas fa-calendar-alt mr-2"></i>
+                Selecteer een datum
+            </a>
+        </div>
+    </div>
+    @endif
+
     @if(session('error'))
         <div class="mb-4 p-4 bg-red-100 border-l-4 border-red-500 text-red-700 rounded-md">
             {{ session('error') }}
+        </div>
+    @endif
+    
+    @if(session('success'))
+        <div class="mb-4 p-4 bg-green-100 border-l-4 border-green-500 text-green-700 rounded-md">
+            {{ session('success') }}
+        </div>
+    @endif
+    
+    @if(session('info'))
+        <div class="mb-4 p-4 bg-blue-100 border-l-4 border-blue-500 text-blue-700 rounded-md">
+            {{ session('info') }}
         </div>
     @endif
 
@@ -90,6 +141,13 @@
                            class="mt-1 focus:ring-blue-500 focus:border-blue-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md">
                 </div>
 
+                <div class="mb-4">
+                    <label for="date" class="block text-sm font-medium text-gray-700">Datum (optioneel)</label>
+                    <input type="date" name="date" id="date" value="{{ session('selected_date') }}"
+                           class="mt-1 focus:ring-blue-500 focus:border-blue-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md">
+                    <p class="mt-1 text-sm text-gray-500">Indien ingevuld, wordt de locatie alleen voor deze datum getoond</p>
+                </div>
+
                 <div class="grid grid-cols-2 gap-4">
                     <div>
                         <label for="begin_time" class="block text-sm font-semibold text-gray-700 mb-1">Vroegste Aankomsttijd</label>
@@ -166,14 +224,27 @@
                                             </span>
                                         </p>
                                     @endif
+                                    
+                                    @if($location->date)
+                                        <p class="text-sm text-gray-500 mt-1">
+                                            <span class="bg-purple-100 text-purple-800 px-2 py-0.5 rounded text-xs">
+                                                Datum: {{ \Carbon\Carbon::parse($location->date)->format('d-m-Y') }}
+                                            </span>
+                                        </p>
+                                    @endif
                                 </div>
-                                <form action="{{ route('route-optimizer.destroy', $location) }}" method="POST" onsubmit="return confirm('Weet u zeker dat u deze locatie wilt verwijderen?');">
-                                    @csrf
-                                    @method('DELETE')
-                                    <button type="submit" class="text-red-600 hover:text-red-800 font-medium">
-                                        Verwijderen
-                                    </button>
-                                </form>
+                                <div class="flex space-x-3">
+                                    <a href="{{ route('route-optimizer.edit', $location->id) }}" class="text-blue-600 hover:text-blue-800 font-medium">
+                                        <i class="fas fa-edit mr-1"></i> Bewerken
+                                    </a>
+                                    <form action="{{ route('route-optimizer.destroy', $location) }}" method="POST" onsubmit="return confirm('Weet u zeker dat u deze locatie wilt verwijderen?');">
+                                        @csrf
+                                        @method('DELETE')
+                                        <button type="submit" class="text-red-600 hover:text-red-800 font-medium">
+                                            <i class="fas fa-trash mr-1"></i> Verwijderen
+                                        </button>
+                                    </form>
+                                </div>
                             </div>
                         </div>
                     @empty
