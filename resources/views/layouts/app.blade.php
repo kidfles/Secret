@@ -215,6 +215,10 @@
             // Show loading indicator
             document.getElementById('loading').style.display = 'flex';
             
+            // Ensure date is in YYYY-MM-DD format as required by the API
+            // Log for debug purposes
+            console.log('Setting date in session:', date);
+            
             fetch('/api/set-selected-date', {
                 method: 'POST',
                 headers: {
@@ -225,7 +229,9 @@
                 },
                 body: JSON.stringify({ date: date })
             })
-            .then(response => {
+            .then(response => response.json())
+            .then(data => {
+                console.log('Date set in session:', data);
                 window.location.href = url;
             })
             .catch(error => {

@@ -84,7 +84,7 @@ class RouteApprovalController extends Controller
         ]);
 
         return redirect()->route('routes.approval.show', $request->date)
-            ->with('success', 'Routes zijn succesvol gepland voor ' . Carbon::parse($request->date)->format('d-m-Y') . '.');
+            ->with('success', 'Routes zijn succesvol gepland voor ' . Carbon::parse($request->date, 'Europe/Amsterdam')->format('d-m-Y') . '.');
     }
 
     /**
@@ -111,7 +111,7 @@ class RouteApprovalController extends Controller
         ]);
 
         return redirect()->route('routes.approval.show', $request->date)
-            ->with('success', 'Routes zijn succesvol gepland voor ' . Carbon::parse($request->date)->format('d-m-Y') . '.');
+            ->with('success', 'Routes zijn succesvol gepland voor ' . Carbon::parse($request->date, 'Europe/Amsterdam')->format('d-m-Y') . '.');
     }
 
     /**
@@ -240,6 +240,6 @@ class RouteApprovalController extends Controller
         ]);
         
         return redirect()->route('routes.approval.index')
-            ->with('success', 'Routes voor ' . Carbon::parse($date)->format('d-m-Y') . ' zijn verwijderd uit de planning.');
+            ->with('success', 'Routes voor ' . Carbon::parse($date, 'Europe/Amsterdam')->format('d-m-Y') . ' zijn verwijderd uit de planning.');
     }
 } 

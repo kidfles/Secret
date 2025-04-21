@@ -9,11 +9,18 @@
             <div>
                 <h2 class="text-xl font-bold text-gray-800">
                     <i class="fas fa-calendar-day mr-2 text-blue-500"></i>
+                    {{-- Use the dynamically calculated date from controller --}}
                     Locaties voor {{ $formattedDate }}
                 </h2>
                 <p class="text-sm text-gray-600 mt-1">
                     U ziet locaties die voor deze datum zijn ingepland en ongebruikte locaties
                 </p>
+                
+                {{-- Hidden developer debug info (only visible in source) --}}
+                <!-- Debug: selectedDate = {{ $selectedDate }}, formattedDate = {{ $formattedDate }} -->
+                @if(isset($rawSelectedDate))
+                <!-- Debug: rawSelectedDate = {{ $rawSelectedDate }} -->
+                @endif
             </div>
             <a href="{{ route('day-planner.index') }}" class="bg-blue-100 hover:bg-blue-200 text-blue-800 px-4 py-2 rounded-md flex items-center">
                 <i class="fas fa-calendar-alt mr-2"></i>

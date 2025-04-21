@@ -19,13 +19,17 @@ class RouteOptimizerController extends Controller
         // Get selected date from session
         $selectedDate = session('selected_date');
         
+        // Debug: Log the selected date to see what's being used
+        \Log::info('RouteOptimizer - Selected Date: ' . ($selectedDate ?? 'NULL'));
+        
         // Get all locations first but filtered by date if available
         $locationsQuery = Location::orderBy('name');
         if ($selectedDate) {
-            $locationsQuery->where(function($query) use ($selectedDate) {
-                $query->where('date', $selectedDate)
-                      ->orWhereNull('date');
-            });
+            // Ensure the selected date is refreshed in the session with each view
+            session(['selected_date' => $selectedDate]);
+            
+            // Use the new scope for consistency
+            $locationsQuery->forDate($selectedDate);
         }
         $allLocations = $locationsQuery->get();
         
@@ -40,21 +44,23 @@ class RouteOptimizerController extends Controller
             })->orderBy('name')->get();
             
             // Only show unassigned locations that match the date filter
+            // Use our scope for consistency
             $unassignedLocations = Location::whereDoesntHave('routes')
-                ->where(function($query) use ($selectedDate) {
-                    $query->where('date', $selectedDate)
-                          ->orWhereNull('date');
-                })
+                ->forDate($selectedDate)
                 ->orderBy('name')
                 ->get();
             
             // Combine both collections
             $locations = $locationsForDate->merge($unassignedLocations);
             
-            // Format date for display
-            $formattedDate = Carbon::parse($selectedDate)->format('d-m-Y');
+            // Format date for display - use PHP's date function to avoid timezone issues
+            $formattedDate = date('d-m-Y', strtotime($selectedDate));
+            \Log::info('RouteOptimizer - Formatted Date: ' . $formattedDate);
             
-            return view('route-optimizer.index', compact('locations', 'allLocations', 'selectedDate', 'formattedDate'));
+            // Pass the raw selected date for debugging
+            $rawSelectedDate = $selectedDate;
+            
+            return view('route-optimizer.index', compact('locations', 'allLocations', 'selectedDate', 'formattedDate', 'rawSelectedDate'));
         } else {
             // If no date filter, show all locations
             $locations = $allLocations;

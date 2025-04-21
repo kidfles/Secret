@@ -15,6 +15,7 @@ class DatabaseSeeder extends Seeder
         $this->call([
             NetherlandsLocationSeeder::class,
             RouteSeeder::class,
+            TodayPlanningSeeder::class,
         ]);
     }
 }

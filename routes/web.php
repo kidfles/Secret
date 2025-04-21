@@ -14,6 +14,8 @@ Route::get('/', function () {
 // Route Optimizer routes
 Route::middleware(['require-date'])->group(function () {
     Route::get('route-optimizer', [RouteOptimizerController::class, 'index'])->name('route-optimizer.index');
+    Route::get('route-optimizer/{location}/edit', [RouteOptimizerController::class, 'edit'])->name('route-optimizer.edit');
+    Route::put('route-optimizer/{location}', [RouteOptimizerController::class, 'update'])->name('route-optimizer.update');
     Route::post('route-optimizer', [RouteOptimizerController::class, 'store'])->name('route-optimizer.store');
     Route::delete('route-optimizer/{location}', [RouteOptimizerController::class, 'destroy'])->name('route-optimizer.destroy');
 });
@@ -56,6 +58,33 @@ Route::delete('day-planner/{date}', [DayPlannerController::class, 'destroy'])->n
 // API route for setting selected date
 Route::post('api/set-selected-date', function (Illuminate\Http\Request $request) {
     $request->validate(['date' => 'required|date_format:Y-m-d']);
+    
+    // Add debug logs
+    \Log::info('Setting selected_date in session: ' . $request->date);
+    
+    // Store exactly as provided since we already validated the format
     session(['selected_date' => $request->date]);
+    
     return response()->json(['success' => true]);
+});
+
+// Debug route for viewing session data
+Route::get('debug/session', function() {
+    $selectedDate = session('selected_date');
+    $formattedDate = null;
+    
+    if ($selectedDate) {
+        // Try both with and without timezone
+        $formattedDate1 = \Carbon\Carbon::parse($selectedDate)->format('d-m-Y');
+        $formattedDate2 = \Carbon\Carbon::parse($selectedDate, 'Europe/Amsterdam')->format('d-m-Y');
+    }
+    
+    return [
+        'selected_date' => $selectedDate,
+        'formatted_without_tz' => $formattedDate1 ?? null,
+        'formatted_with_tz' => $formattedDate2 ?? null,
+        'now' => \Carbon\Carbon::now()->format('Y-m-d H:i:s'),
+        'timezone' => config('app.timezone'),
+        'session_id' => session()->getId(),
+    ];
 });

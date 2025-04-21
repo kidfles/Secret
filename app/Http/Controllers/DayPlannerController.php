@@ -23,7 +23,8 @@ class DayPlannerController extends Controller
         }
         
         // Get all day plannings
-        $plannedDays = DayPlanning::orderBy('date', 'asc')
+        $plannedDays = DB::table('day_plannings')
+            ->orderBy('date', 'desc')
             ->get()
             ->map(function ($planning) {
                 // Use either date or scheduled_date based on which one exists
@@ -31,7 +32,7 @@ class DayPlannerController extends Controller
                 
                 return [
                     'date' => $planning->date,
-                    'formatted_date' => Carbon::parse($planning->date)->format('d-m-Y'),
+                    'formatted_date' => date('d-m-Y', strtotime($planning->date)),
                     'routes_count' => Route::where($dateColumn, $planning->date)->count()
                 ];
             });
@@ -56,8 +57,9 @@ class DayPlannerController extends Controller
             'date' => 'required|date',
         ]);
 
-        // Format date for storage
-        $formattedDate = Carbon::parse($validated['date'])->format('Y-m-d');
+        // Format date for storage using strtotime for consistency
+        $timestamp = strtotime($validated['date']);
+        $formattedDate = date('Y-m-d', $timestamp);
         
         // Create or update a day planning record
         DayPlanning::updateOrCreate(
@@ -68,7 +70,7 @@ class DayPlannerController extends Controller
         // Store the selected date in the session
         session(['selected_date' => $formattedDate]);
 
-        $displayDate = Carbon::parse($formattedDate)->format('d-m-Y');
+        $displayDate = date('d-m-Y', $timestamp);
         
         // Redirect to locations (route-optimizer) instead of routes
         return redirect()
@@ -81,10 +83,21 @@ class DayPlannerController extends Controller
      */
     public function show($date)
     {
-        $date = Carbon::parse($date)->format('Y-m-d');
+        // Ensure we have a standardized date format
+        // First convert to timestamp to avoid timezone issues
+        $timestamp = strtotime($date);
+        if (!$timestamp) {
+            abort(400, 'Invalid date format');
+        }
         
-        // Store the selected date in the session
+        // Format the date in Y-m-d format for database storage
+        $date = date('Y-m-d', $timestamp);
+        
+        // Store the selected date in the session - with proper format
         session(['selected_date' => $date]);
+        
+        // Log for debugging
+        \Log::info('DayPlannerController@show - Setting selected_date: ' . $date);
         
         // Find or create the day planning
         $dayPlanning = DayPlanning::firstOrCreate(['date' => $date]);
@@ -111,10 +124,19 @@ class DayPlannerController extends Controller
             abort(400, 'Missing date parameter');
         }
         
-        $date = Carbon::parse($date)->format('Y-m-d');
+        // Ensure we have a standardized date format
+        $timestamp = strtotime($date);
+        if (!$timestamp) {
+            abort(400, 'Invalid date format');
+        }
+        
+        $date = date('Y-m-d', $timestamp);
         
         // Store the selected date in the session
         session(['selected_date' => $date]);
+        
+        // Log for debugging
+        \Log::info('DayPlannerController@edit - Setting selected_date: ' . $date);
         
         // Find or create the day planning
         $dayPlanning = DayPlanning::firstOrCreate(['date' => $date]);
@@ -136,8 +158,11 @@ class DayPlannerController extends Controller
             'new_date' => 'required|date',
         ]);
 
-        $oldDate = Carbon::parse($date)->format('Y-m-d');
-        $newDate = Carbon::parse($request->new_date)->format('Y-m-d');
+        $oldTimestamp = strtotime($date);
+        $newTimestamp = strtotime($request->new_date);
+        
+        $oldDate = date('Y-m-d', $oldTimestamp);
+        $newDate = date('Y-m-d', $newTimestamp);
 
         try {
             DB::beginTransaction();
@@ -173,7 +198,7 @@ class DayPlannerController extends Controller
             session(['selected_date' => $newDate]);
             
             return redirect()->route('day-planner.show', $newDate)
-                ->with('success', 'Dagplanning is bijgewerkt en verplaatst naar ' . Carbon::parse($newDate)->format('d-m-Y'));
+                ->with('success', 'Dagplanning is bijgewerkt en verplaatst naar ' . date('d-m-Y', $newTimestamp));
         } catch (\Exception $e) {
             DB::rollBack();
             
@@ -187,7 +212,8 @@ class DayPlannerController extends Controller
      */
     public function destroy($date)
     {
-        $date = Carbon::parse($date)->format('Y-m-d');
+        $timestamp = strtotime($date);
+        $date = date('Y-m-d', $timestamp);
         
         try {
             DB::beginTransaction();
@@ -207,7 +233,7 @@ class DayPlannerController extends Controller
             DB::commit();
             
             return redirect()->route('day-planner.index')
-                ->with('success', 'Dagplanning voor ' . Carbon::parse($date)->format('d-m-Y') . ' is verwijderd');
+                ->with('success', 'Dagplanning voor ' . date('d-m-Y', $timestamp) . ' is verwijderd');
         } catch (\Exception $e) {
             DB::rollBack();
             

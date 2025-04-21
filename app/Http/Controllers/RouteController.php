@@ -17,101 +17,35 @@ class RouteController extends Controller
     private const CACHE_TTL = 900;
     private const CACHE_KEY = 'routes';
 
+    /**
+     * Display a listing of routes for the selected date or all routes.
+     */
     public function index()
     {
-        // Get selected date from session
         $selectedDate = session('selected_date');
-
-        // Enable query logging for debugging
-        DB::enableQueryLog();
+        
+        // Refresh the session date to ensure it persists across requests
+        if ($selectedDate) {
+            session(['selected_date' => $selectedDate]);
+            \Log::info('RouteController@index - Refreshed selected_date: ' . $selectedDate);
+        }
         
         // Use either date or scheduled_date based on which one exists
         $dateColumn = Schema::hasColumn('routes', 'date') ? 'date' : 'scheduled_date';
         
-        // Prepare the routes query with date filtering if available
-        $routesQuery = Route::with(['locations' => function($query) {
-            $query->orderBy('route_location.order');
-        }]);
+        $query = Route::orderBy('created_at', 'desc');
         
         // Apply date filter if we have a selected date
         if ($selectedDate) {
-            $routesQuery->whereDate($dateColumn, $selectedDate);
+            $query->whereDate($dateColumn, $selectedDate);
         }
         
-        // Execute query
-        $routes = $routesQuery->get();
+        $routes = $query->get();
         
-        // Pre-calculate tile totals and stats for each route to avoid N+1 queries
-        $routeStats = [];
-        $totalTilesAll = 0;
+        // Format date for display if we have one
+        $formattedDate = $selectedDate ? date('d-m-Y', strtotime($selectedDate)) : null;
         
-        foreach ($routes as $route) {
-            $routeTiles = 0;
-            $tilesByType = [];
-            
-            foreach ($route->locations as $location) {
-                // Use tegels if available, fall back to tegels_count
-                $tileCount = $location->tegels ?? $location->tegels_count ?? 0;
-                
-                if ($tileCount > 0) {
-                    $routeTiles += $tileCount;
-                    $type = $location->tegels_type ?? 'onbekend';
-                    
-                    if (!isset($tilesByType[$type])) {
-                        $tilesByType[$type] = 0;
-                    }
-                    
-                    $tilesByType[$type] += $tileCount;
-                }
-            }
-            
-            $totalTilesAll += $routeTiles;
-            
-            $routeStats[$route->id] = [
-                'total_tiles' => $routeTiles,
-                'tiles_by_type' => $tilesByType,
-                'location_count' => $route->locations->count()
-            ];
-        }
-        
-        // Calculate average and max difference
-        $avgTiles = count($routes) > 0 ? $totalTilesAll / count($routes) : 0;
-        $maxTiles = count($routeStats) > 0 ? max(array_column($routeStats, 'total_tiles')) : 0;
-        $minTiles = count($routeStats) > 0 ? min(array_column($routeStats, 'total_tiles')) : 0;
-        $maxDiff = $maxTiles - $minTiles;
-        
-        // Create a list of colors for routes on the map
-        $routeColors = [
-            '#FF0000','#00FF00','#0000FF','#FFA500','#800080',
-            '#008080','#FFFF00','#FF00FF','#00FFFF','#A52A2A',
-            '#4682B4','#32CD32','#FF6347','#8A2BE2','#2E8B57',
-            '#DAA520','#D2691E','#9932CC','#FF4500','#696969',
-            // Additional colors
-            '#556B2F','#483D8B','#CD5C5C','#4B0082','#FF8C00',
-        ];
-        
-        // Pass the selected date to the view
-        $formattedDate = $selectedDate ? Carbon::parse($selectedDate)->format('d-m-Y') : null;
-        
-        // Get query debugging info
-        $queryLog = DB::getQueryLog();
-        $queryCount = count($queryLog);
-        
-        $data = [
-            'routes' => $routes,
-            'routeStats' => $routeStats,
-            'totalTilesAll' => $totalTilesAll,
-            'avgTiles' => $avgTiles,
-            'maxDiff' => $maxDiff,
-            'routeColors' => $routeColors,
-            'queryCount' => $queryCount,
-            'queryLog' => $queryLog,
-            'fromCache' => false,
-            'selectedDate' => $selectedDate,
-            'formattedDate' => $formattedDate
-        ];
-        
-        return view('routes.index', $data);
+        return view('routes.index', compact('routes', 'selectedDate', 'formattedDate'));
     }
 
     public function generate(Request $request)
@@ -1552,11 +1486,14 @@ class RouteController extends Controller
      */
     public function generateFromDay($date)
     {
-        // Get routes for the specified date
+        // Use the correct date column
+        $dateColumn = Schema::hasColumn('routes', 'date') ? 'date' : 'scheduled_date';
+        
+        // Get routes for the specified date using the correct column
         $routes = Route::with(['locations' => function($query) {
             $query->orderBy('route_location.order', 'asc');
         }])
-        ->where('scheduled_date', $date)
+        ->where($dateColumn, $date)
         ->get();
         
         if ($routes->isEmpty()) {
@@ -1580,6 +1517,12 @@ class RouteController extends Controller
         
         // Get all locations
         $locations = Location::whereIn('id', $locationIds)->get();
+        
+        // Check if we actually found any valid locations
+        if ($locations->isEmpty()) {
+            return redirect()->route('day-planner.edit', $date)
+                ->with('error', 'Geen geldige locaties gevonden. Controleer of alle locaties correcte coördinaten hebben.');
+        }
         
         // Start location (Broekstraat 68)
         $startLocation = (object) [
@@ -1607,10 +1550,21 @@ class RouteController extends Controller
             // Optimize all routes with the existing number of routes
             $this->optimizeRoutesGlobally($routes, $locations, $distanceMatrix);
             
+            // Verify that each route has at least one location assigned
+            $emptyRoutes = $routes->filter(function($route) {
+                return $route->locations()->count() == 0;
+            });
+            
+            if ($emptyRoutes->isNotEmpty()) {
+                DB::rollBack();
+                return redirect()->route('day-planner.edit', $date)
+                    ->with('error', 'Kon niet alle routes optimaliseren. Er zijn niet genoeg locaties voor het aantal routes.');
+            }
+            
             DB::commit();
             
             return redirect()->route('day-planner.show', $date)
-                ->with('success', 'Routes zijn geoptimaliseerd voor ' . Carbon::parse($date)->format('d-m-Y') . '.');
+                ->with('success', 'Routes zijn geoptimaliseerd voor ' . Carbon::parse($date, 'Europe/Amsterdam')->format('d-m-Y') . '.');
         } catch (\Exception $e) {
             DB::rollBack();
             return redirect()->route('day-planner.show', $date)
@@ -1631,7 +1585,7 @@ class RouteController extends Controller
             
             $route = new Route();
             $route->name = $validated['name'];
-            $route->date = Carbon::parse($validated['date'])->format('Y-m-d');
+            $route->date = Carbon::parse($validated['date'], 'Europe/Amsterdam')->format('Y-m-d');
             // Set other fields as needed
             $route->save();
             

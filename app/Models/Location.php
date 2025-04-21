@@ -89,4 +89,19 @@ class Location extends Model
             ->withPivot('order', 'arrival_time', 'completion_time', 'travel_time')
             ->orderBy('route_location.order');
     }
+    
+    /**
+     * Scope a query to only include locations for a specific date or with no date assigned.
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder  $query
+     * @param  string  $date
+     * @return \Illuminate\Database\Eloquent\Builder
+     */
+    public function scopeForDate($query, $date)
+    {
+        return $query->where(function($query) use ($date) {
+            $query->where('date', $date)
+                  ->orWhereNull('date');
+        });
+    }
 }

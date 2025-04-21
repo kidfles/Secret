@@ -5,13 +5,9 @@
     <!-- Redesigned Header Section -->
     <div class="header-section mb-5">
         <div class="d-flex justify-content-between align-items-center mb-4">
-            <h1 class="display-5 fw-bold text-dark m-0">Dagplanner</h1>
-            <div class="quick-actions">
-                <button type="button" class="btn btn-outline-secondary rounded-pill me-2" id="today-btn">
-                    <i class="fas fa-calendar-day me-1"></i> Vandaag
-                </button>
+            <div class="quick-actions ms-auto">
                 <button type="button" class="btn btn-primary rounded-pill" id="new-planning-btn">
-                    <i class="fas fa-plus me-1"></i> Nieuwe Planning
+                    <i class="fas fa-plus me-1"></i> Planning
                 </button>
             </div>
         </div>
@@ -126,11 +122,11 @@
                             <div class="day-card-content">
                                 <div class="day-info">
                                     <div class="date-badge">
-                                        <span class="day-num">{{ \Carbon\Carbon::parse($day['date'])->format('d') }}</span>
-                                        <span class="month">{{ \Carbon\Carbon::parse($day['date'])->format('M') }}</span>
+                                        <span class="day-num">{{ date('d', strtotime($day['date'])) }}</span>
+                                        <span class="month">{{ date('M', strtotime($day['date'])) }}</span>
                                     </div>
                                     <div class="day-details">
-                                        <h3 class="day-title">{{ \Carbon\Carbon::parse($day['date'])->format('l') }}</h3>
+                                        <h3 class="day-title">{{ date('l', strtotime($day['date'])) }}</h3>
                                         <div class="route-count">
                                             <i class="fas fa-route me-2"></i>
                                             <span>{{ $day['routes_count'] }} {{ $day['routes_count'] == 1 ? 'route' : 'routes' }}</span>
@@ -722,11 +718,6 @@
         });
         
         // Date navigation shortcuts
-        document.getElementById('today-btn').addEventListener('click', function() {
-            const today = new Date().toISOString().slice(0, 10);
-            window.location.href = '{{ url("/day-planner") }}/' + today;
-        });
-        
         document.getElementById('yesterday-btn').addEventListener('click', function() {
             const yesterday = new Date();
             yesterday.setDate(yesterday.getDate() - 1);
@@ -864,8 +855,45 @@
         
         // AJAX helper to set date in session
         function setDateInSession(date, callback) {
-            const csrfToken = document.querySelector('input[name="_token"]').value;
-            fetch('/api/set-selected-date', {
+            // Add debug
+            console.log('Setting date in session:', date);
+            
+            // Ensure date is in YYYY-MM-DD format
+            let formattedDate = date;
+            
+            // Check if date is already in YYYY-MM-DD format (e.g., '2025-04-21')
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+                // If not, try to parse and format it
+                try {
+                    // Parse date string with explicit handling to avoid timezone issues
+                    const parts = date.split('-');
+                    
+                    if (parts.length === 3) {
+                        // Check if the format is DD-MM-YYYY
+                        if (parts[0].length === 2 && parts[1].length === 2 && parts[2].length === 4) {
+                            // Convert DD-MM-YYYY to YYYY-MM-DD
+                            formattedDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
+                        }
+                        // Otherwise, assume it's already YYYY-MM-DD or similar
+                    } else {
+                        // For dates not in hyphenated format, use a safer approach
+                        const dateObj = new Date(date);
+                        // Explicitly get the UTC or local values to avoid timezone shifts
+                        // Use local date components to maintain the intended date
+                        const year = dateObj.getFullYear();
+                        const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+                        const day = String(dateObj.getDate()).padStart(2, '0');
+                        formattedDate = `${year}-${month}-${day}`;
+                    }
+                    console.log('Reformatted date:', formattedDate);
+                } catch (e) {
+                    console.error('Error parsing date:', e);
+                    return; // Don't proceed if date parsing failed
+                }
+            }
+            
+            const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+            return fetch('/api/set-selected-date', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -873,16 +901,19 @@
                     'Accept': 'application/json',
                     'X-Requested-With': 'XMLHttpRequest'
                 },
-                body: JSON.stringify({ date: date })
+                body: JSON.stringify({ date: formattedDate })
             })
             .then(response => response.json())
             .then(data => {
+                console.log('Date set success:', data);
                 if (callback) callback(data);
+                return data;
             })
             .catch(error => {
                 console.error('Error setting date:', error);
                 // Continue anyway
                 if (callback) callback({});
+                return {};
             });
         }
         
@@ -904,6 +935,7 @@
                     return;
                 }
                 
+                // Always force a fresh date update before redirecting
                 setDateInSession(date, function() {
                     window.location.href = '{{ route('route-optimizer.index') }}';
                 });
@@ -923,8 +955,11 @@
                     return;
                 }
                 
-                // Set date in session and navigate to routes page
+                console.log('Edit button clicked, date attribute:', date);
+                
+                // Always force a fresh date update before redirecting
                 setDateInSession(date, function() {
+                    console.log('Date set, redirecting to route-optimizer');
                     window.location.href = '{{ route('route-optimizer.index') }}';
                 });
             });
