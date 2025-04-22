@@ -316,7 +316,6 @@ class TodayPlanningSeeder extends Seeder
                 'name' => $routeNames[$i],
                 'start_time' => $startTimes[$i],
                 'date' => $date,
-                'scheduled_date' => $date, // Adding both date fields to ensure compatibility
             ]);
         }
         
