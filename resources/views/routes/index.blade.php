@@ -81,6 +81,19 @@
           <span class="text-sm text-gray-600">Max verschil:</span>
           <span class="block font-medium">{{ $maxDiff }}</span>
         </div>
+        @if(!empty($tileTypes))
+          <div>
+            <span class="text-sm text-gray-600">Tegel types:</span>
+            <div class="space-y-1">
+              @foreach($tileTypes as $type => $count)
+                <div class="flex justify-between">
+                  <span class="text-sm">{{ ucfirst($type) }}:</span>
+                  <span class="font-medium">{{ $count }}</span>
+                </div>
+              @endforeach
+            </div>
+          </div>
+        @endif
       </div>
     </div>
   @else

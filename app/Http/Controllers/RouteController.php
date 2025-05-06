@@ -44,8 +44,58 @@ class RouteController extends Controller
         
         // Format date for display if we have one
         $formattedDate = $selectedDate ? date('d-m-Y', strtotime($selectedDate)) : null;
+
+        // Calculate tile statistics if we have routes
+        $totalTilesAll = 0;
+        $avgTiles = 0;
+        $maxDiff = 0;
+        $tileTypes = [];
         
-        return view('routes.index', compact('routes', 'selectedDate', 'formattedDate'));
+        if ($routes->isNotEmpty()) {
+            // Calculate total tiles and per-route tiles
+            $routeTiles = [];
+            foreach ($routes as $route) {
+                $routeTileCount = 0;
+                foreach ($route->locations as $location) {
+                    $tileCount = $location->tegels ?? $location->tegels_count ?? 0;
+                    $tileType = $location->tegels_type ?? 'standaard';
+                    
+                    $routeTileCount += $tileCount;
+                    
+                    // Track tile types
+                    if (!isset($tileTypes[$tileType])) {
+                        $tileTypes[$tileType] = 0;
+                    }
+                    $tileTypes[$tileType] += $tileCount;
+                }
+                $routeTiles[] = $routeTileCount;
+                $totalTilesAll += $routeTileCount;
+            }
+            
+            // Calculate average tiles per route
+            $avgTiles = $totalTilesAll / count($routes);
+            
+            // Calculate maximum difference between routes
+            if (count($routeTiles) > 1) {
+                $maxDiff = max($routeTiles) - min($routeTiles);
+            }
+        }
+
+        // Define route colors
+        $routeColors = [
+            '#FF0000', // Red
+            '#00FF00', // Green
+            '#0000FF', // Blue
+            '#FFA500', // Orange
+            '#800080', // Purple
+            '#008080', // Teal
+            '#FFD700', // Gold
+            '#FF69B4', // Hot Pink
+            '#4B0082', // Indigo
+            '#00FFFF', // Cyan
+        ];
+        
+        return view('routes.index', compact('routes', 'selectedDate', 'formattedDate', 'routeColors', 'totalTilesAll', 'avgTiles', 'maxDiff', 'tileTypes'));
     }
 
     public function generate(Request $request)
@@ -110,7 +160,10 @@ class RouteController extends Controller
             // Create routes in a batch
             $routeNames = [];
             for ($i = 0; $i < $numRoutes; $i++) {
-                $routeNames[] = ['name' => 'Route ' . ($i + 1)];
+                $routeNames[] = [
+                    'name' => 'Route ' . ($i + 1),
+                    'date' => $selectedDate
+                ];
             }
             $createdRouteIds = Route::insert($routeNames);
             $createdRoutes = Route::orderBy('id')->get();
