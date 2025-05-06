@@ -6,6 +6,7 @@ use App\Http\Controllers\RouteController;
 use App\Http\Controllers\LocationController;
 use App\Http\Controllers\RouteApprovalController;
 use App\Http\Controllers\DayPlannerController;
+use App\Http\Controllers\StyleGuideController;
 
 Route::get('/', function () {
     return redirect()->route('day-planner.index');
@@ -88,3 +89,6 @@ Route::get('debug/session', function() {
         'session_id' => session()->getId(),
     ];
 });
+
+// Style Guide route
+Route::get('style-guide', [StyleGuideController::class, 'index'])->name('style-guide.index');

@@ -142,8 +142,8 @@
                             </div>
                         </div>
                     @endforeach
-                </div>
-            @else
+                                        </div>
+                                        @else
                 <div class="empty-state">
                     <img src="https://cdn-icons-png.flaticon.com/512/6133/6133991.png" alt="Empty calendar" class="empty-icon">
                     <h3>Nog geen dagen gepland</h3>

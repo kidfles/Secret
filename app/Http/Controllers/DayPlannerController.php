@@ -206,7 +206,7 @@ class DayPlannerController extends Controller
                 ->withInput();
         }
     }
-
+    
     /**
      * Remove the specified resource from storage.
      */
