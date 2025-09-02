@@ -87,7 +87,7 @@
                     <label for="full_address" class="block text-sm font-semibold text-gray-700 mb-1">Volledig Adres</label>
                     <div class="relative">
                         <input type="text" id="full_address" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500 bg-gray-50 py-3" placeholder="Voer volledig adres in (bijv. Hoofdstraat 123, Amsterdam)" required>
-                        <div id="address-suggestions" class="absolute z-10 w-full mt-1 bg-white rounded-md shadow-lg hidden max-h-60 overflow-y-auto">
+                        <div id="address-suggestions" class="absolute z-50 w-full mt-1 bg-white rounded-md shadow-lg hidden max-h-60 overflow-y-auto border border-gray-200">
                             <!-- Suggestions will be populated here -->
                         </div>
                     </div>
@@ -96,13 +96,13 @@
 
                 <div class="grid grid-cols-2 gap-4">
                     <div>
-                        <label for="street" class="block text-sm font-semibold text-gray-700 mb-1">Straatnaam (optioneel)</label>
-                        <input type="text" name="street" id="street" class="mt-1 block w-full rounded-md border-gray-300 bg-gray-100 shadow-sm text-gray-600 py-3">
+                        <label for="street" class="block text-sm font-semibold text-gray-700 mb-1">Straatnaam</label>
+                        <input type="text" name="street" id="street" class="mt-1 block w-full rounded-md border-gray-300 bg-gray-100 shadow-sm text-gray-600 py-3" required>
                     </div>
 
                     <div>
-                        <label for="house_number" class="block text-sm font-semibold text-gray-700 mb-1">Huisnummer (optioneel)</label>
-                        <input type="text" name="house_number" id="house_number" class="mt-1 block w-full rounded-md border-gray-300 bg-gray-100 shadow-sm text-gray-600 py-3">
+                        <label for="house_number" class="block text-sm font-semibold text-gray-700 mb-1">Huisnummer</label>
+                        <input type="text" name="house_number" id="house_number" class="mt-1 block w-full rounded-md border-gray-300 bg-gray-100 shadow-sm text-gray-600 py-3" required>
                     </div>
                 </div>
 
@@ -336,6 +336,8 @@
         // Address suggestions functionality
         const fullAddressInput = document.getElementById('full_address');
         const suggestionsContainer = document.getElementById('address-suggestions');
+        const COUNTRY_CODES = 'nl,be,de,lu,fr';
+        let highlightedIndex = -1;
 
         // Function to fetch and display address suggestions
         function fetchAddressSuggestions(query) {
@@ -348,48 +350,102 @@
             suggestionsContainer.innerHTML = '<div class="p-2 text-gray-500">Zoeken...</div>';
             suggestionsContainer.classList.remove('hidden');
 
-            // Add User-Agent header to comply with Nominatim usage policy
-            fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)},Netherlands&countrycodes=nl&limit=5`, {
-                headers: {
-                    'User-Agent': 'RouteOptimizer/1.0'
-                }
-            })
+            // Try Nominatim first
+            const nominatimUrl = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&accept-language=nl&q=${encodeURIComponent(query)}&countrycodes=${COUNTRY_CODES}&limit=8`;
+            console.debug('[Geocode] Fetch Nominatim:', nominatimUrl);
+            fetch(nominatimUrl)
                 .then(response => {
-                    if (!response.ok) {
-                        throw new Error(`HTTP error! status: ${response.status}`);
-                    }
+                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
                     return response.json();
                 })
                 .then(data => {
-                    suggestionsContainer.innerHTML = '';
-                    
-                    if (data && data.length > 0) {
-                        data.forEach(result => {
-                            const div = document.createElement('div');
-                            div.className = 'p-2 hover:bg-gray-100 cursor-pointer border-b border-gray-200';
-                            div.textContent = result.display_name;
-                            div.addEventListener('click', () => {
-                                fullAddressInput.value = result.display_name;
-                                suggestionsContainer.classList.add('hidden');
-                                parseAddress(result);
-                            });
-                            suggestionsContainer.appendChild(div);
-                        });
+                    if (Array.isArray(data) && data.length > 0) {
+                        renderNominatimSuggestions(data);
                     } else {
-                        const div = document.createElement('div');
-                        div.className = 'p-2 text-gray-500';
-                        div.textContent = 'Geen adressen gevonden';
-                        suggestionsContainer.appendChild(div);
+                        console.debug('[Geocode] Nominatim empty, trying Photon');
+                        fetchPhotonSuggestions(query);
                     }
                 })
                 .catch(error => {
-                    console.error('Error fetching address suggestions:', error);
-                    suggestionsContainer.innerHTML = '<div class="p-2 text-gray-500">Probeer het opnieuw</div>';
-                    // Hide suggestions after 3 seconds
-                    setTimeout(() => {
-                        suggestionsContainer.classList.add('hidden');
-                    }, 3000);
+                    console.warn('[Geocode] Nominatim failed:', error);
+                    fetchPhotonSuggestions(query);
                 });
+        }
+
+        function renderNominatimSuggestions(results) {
+            suggestionsContainer.innerHTML = '';
+            highlightedIndex = -1;
+            results.forEach(result => {
+                const div = document.createElement('div');
+                div.className = 'p-2 hover:bg-gray-100 cursor-pointer border-b border-gray-200';
+                div.textContent = result.display_name;
+                div.addEventListener('click', () => {
+                    fullAddressInput.value = result.display_name;
+                    suggestionsContainer.classList.add('hidden');
+                    parseAddress(result);
+                });
+                suggestionsContainer.appendChild(div);
+            });
+        }
+
+        function fetchPhotonSuggestions(query) {
+            const photonUrl = `https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&lang=nl&limit=8`;
+            console.debug('[Geocode] Fetch Photon:', photonUrl);
+            fetch(photonUrl)
+                .then(response => {
+                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                    return response.json();
+                })
+                .then(data => {
+                    const features = (data && data.features) || [];
+                    if (features.length > 0) {
+                        renderPhotonSuggestions(features);
+                    } else {
+                        suggestionsContainer.innerHTML = '<div class="p-2 text-gray-500">Geen adressen gevonden</div>';
+                    }
+                })
+                .catch(error => {
+                    console.error('[Geocode] Photon failed:', error);
+                    suggestionsContainer.innerHTML = '<div class="p-2 text-gray-500">Geen adressen gevonden</div>';
+                });
+        }
+
+        function renderPhotonSuggestions(features) {
+            suggestionsContainer.innerHTML = '';
+            highlightedIndex = -1;
+            features.forEach(f => {
+                const props = f.properties || {};
+                const line1 = [props.street, props.housenumber].filter(Boolean).join(' ');
+                const line2 = [props.postcode, props.city || props.town || props.village, props.country].filter(Boolean).join(' ');
+                const div = document.createElement('div');
+                div.className = 'p-2 hover:bg-gray-100 cursor-pointer border-b border-gray-200';
+                div.innerHTML = `<div class="text-sm text-gray-900">${line1 || props.name || ''}</div><div class="text-xs text-gray-600">${line2}</div>`;
+                div.addEventListener('click', () => {
+                    const result = photonToNominatimLike(f);
+                    fullAddressInput.value = result.display_name;
+                    suggestionsContainer.classList.add('hidden');
+                    parseAddress(result);
+                });
+                suggestionsContainer.appendChild(div);
+            });
+        }
+
+        function photonToNominatimLike(feature) {
+            const props = feature.properties || {};
+            const coords = feature.geometry && feature.geometry.coordinates ? feature.geometry.coordinates : [null, null];
+            const display = [props.street, props.housenumber, props.postcode, (props.city || props.town || props.village), props.country].filter(Boolean).join(', ');
+            return {
+                lat: coords[1],
+                lon: coords[0],
+                display_name: display,
+                address: {
+                    road: props.street,
+                    house_number: props.housenumber,
+                    postcode: props.postcode,
+                    city: props.city || props.town || props.village,
+                    country: props.country
+                }
+            };
         }
 
         // Add event listeners for address input with debounce
@@ -424,50 +480,64 @@
         function parseAddress(result) {
             const address = result.display_name;
             document.getElementById('address').value = address;
-            
-            // Split the address into parts
-            const parts = address.split(',').map(part => part.trim());
-            
-            // Extract postal code (usually in format "1234 AB" or "AB 1234")
-            const postalCodeMatch = address.match(/\b\d{4}\s*[A-Z]{2}\b|\b[A-Z]{2}\s*\d{4}\b/);
-            if (postalCodeMatch) {
-                document.getElementById('postal_code').value = postalCodeMatch[0].replace(/\s+/g, '');
+
+            // Prefer structured address fields from Nominatim when available
+            const addr = result.address || {};
+            const cityCandidate = addr.city || addr.town || addr.village || addr.hamlet || '';
+            const postcode = (addr.postcode || '').replace(/\s+/g, '');
+            const road = addr.road || addr.pedestrian || addr.cycleway || addr.footway || '';
+            const houseNumber = addr.house_number || '';
+
+            if (cityCandidate) {
+                document.getElementById('city').value = cityCandidate;
             }
-            
-            // Extract city (usually the second-to-last part before the postal code)
-            let city = '';
-            for (let i = parts.length - 1; i >= 0; i--) {
-                if (!/^\d+$/.test(parts[i]) && !/^\d{4}\s*[A-Z]{2}$/.test(parts[i])) {
-                    city = parts[i];
-                    break;
+            if (postcode) {
+                document.getElementById('postal_code').value = postcode;
+            }
+            if (road) {
+                document.getElementById('street').value = road;
+            }
+            if (houseNumber) {
+                document.getElementById('house_number').value = houseNumber;
+            }
+
+            // Fallback parsing from display_name if structured fields missing
+            if (!road || !houseNumber || !cityCandidate || !postcode) {
+                const parts = address.split(',').map(part => part.trim());
+                const postalCodeMatch = address.match(/\b\d{4}\s*[A-Z]{2}\b|\b[A-Z]{2}\s*\d{4}\b/);
+                if (!postcode && postalCodeMatch) {
+                    document.getElementById('postal_code').value = postalCodeMatch[0].replace(/\s+/g, '');
                 }
-            }
-            document.getElementById('city').value = city;
-            
-            // Extract street and house number
-            // For addresses like "1102, Aalsburg, Wijchen", the first part is the house number
-            const firstPart = parts[0];
-            if (/^\d+$/.test(firstPart)) {
-                // If first part is just a number, it's the house number
-                document.getElementById('house_number').value = firstPart;
-                // The street is the second part
-                document.getElementById('street').value = parts[1] || '';
-            } else {
-                // Try to extract house number from the first part
-                const streetMatch = firstPart.match(/^(.*?)\s*(\d+\w*)$/);
-                if (streetMatch) {
-                    document.getElementById('street').value = streetMatch[1].trim();
-                    document.getElementById('house_number').value = streetMatch[2];
+                let city = '';
+                for (let i = parts.length - 1; i >= 0; i--) {
+                    if (!/^\d+$/.test(parts[i]) && !/^\d{4}\s*[A-Z]{2}$/.test(parts[i])) {
+                        city = parts[i];
+                        break;
+                    }
+                }
+                if (!cityCandidate && city) {
+                    document.getElementById('city').value = city;
+                }
+                const firstPart = parts[0];
+                if (/^\d+$/.test(firstPart)) {
+                    document.getElementById('house_number').value = firstPart;
+                    document.getElementById('street').value = parts[1] || '';
                 } else {
-                    document.getElementById('street').value = firstPart;
-                    document.getElementById('house_number').value = '';
+                    const streetMatch = firstPart.match(/^(.*?)\s*(\d+\w*)$/);
+                    if (streetMatch) {
+                        document.getElementById('street').value = streetMatch[1].trim();
+                        document.getElementById('house_number').value = streetMatch[2];
+                    } else {
+                        document.getElementById('street').value = firstPart;
+                        document.getElementById('house_number').value = '';
+                    }
                 }
             }
-            
+
             // Set coordinates
             document.getElementById('latitude').value = result.lat;
             document.getElementById('longitude').value = result.lon;
-            
+
             // Update map marker
             updateMapMarker(result.lat, result.lon, address);
         }
@@ -493,6 +563,63 @@
             map.setView([lat, lon], 15);
         }
         
+        // Keyboard navigation for suggestions
+        fullAddressInput.addEventListener('keydown', function(e) {
+            const items = Array.from(suggestionsContainer.querySelectorAll('div'));
+            if (suggestionsContainer.classList.contains('hidden') || items.length === 0) return;
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                highlightedIndex = (highlightedIndex + 1) % items.length;
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                highlightedIndex = (highlightedIndex - 1 + items.length) % items.length;
+            } else if (e.key === 'Enter') {
+                e.preventDefault();
+                if (highlightedIndex >= 0 && items[highlightedIndex]) {
+                    items[highlightedIndex].click();
+                } else if (items[0]) {
+                    items[0].click();
+                }
+                return;
+            } else {
+                return;
+            }
+            items.forEach((el, idx) => {
+                el.classList.toggle('bg-gray-100', idx === highlightedIndex);
+            });
+        });
+
+        // If user finishes typing an address without choosing a suggestion, geocode on blur
+        fullAddressInput.addEventListener('blur', function() {
+            const query = this.value.trim();
+            if (!query) return;
+            // Delay to allow click selection from dropdown without double-calling
+            setTimeout(() => {
+                if (!document.getElementById('latitude').value) {
+                    const url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&accept-language=nl&q=${encodeURIComponent(query)}&countrycodes=${COUNTRY_CODES}&limit=1`;
+                    console.debug('[Geocode] Blur Nominatim:', url);
+                    fetch(url)
+                        .then(r => r.json())
+                        .then(results => {
+                            if (results && results.length) {
+                                parseAddress(results[0]);
+                            } else {
+                                console.debug('[Geocode] Blur Nominatim empty, trying Photon');
+                                return fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&lang=nl&limit=1`)
+                                    .then(r => r.json())
+                                    .then(data => {
+                                        const f = data && data.features && data.features[0];
+                                        if (f) parseAddress(photonToNominatimLike(f));
+                                    });
+                            }
+                        })
+                        .catch(() => {
+                            // Silent fallback on errors
+                        });
+                }
+            }, 200);
+        });
+
         // Handle form submission
         document.getElementById('locationForm').addEventListener('submit', function(e) {
             // Make sure we have coordinates before submitting
@@ -521,4 +648,11 @@
         });
     });
 </script>
-@endsection 
+@endsection
+
+@push('scripts')
+<script>
+    window.__LOCATIONS__ = @json($locations);
+</script>
+<script src="{{ asset('js/route-optimizer.js') }}" defer></script>
+@endpush
