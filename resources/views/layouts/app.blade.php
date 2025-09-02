@@ -18,6 +18,10 @@
     <!-- Load Leaflet asynchronously -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" media="print" onload="this.media='all'">
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
+    <!-- Leaflet MarkerCluster plugin -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.Default.css">
+    <script src="https://unpkg.com/leaflet.markercluster/dist/leaflet.markercluster.js" defer></script>
     
     <style>
         :root {

@@ -86,7 +86,11 @@
                 <div>
                     <label for="full_address" class="block text-sm font-semibold text-gray-700 mb-1">Volledig Adres</label>
                     <div class="relative">
+<<<<<<< Updated upstream
                         <input type="text" id="full_address" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500 bg-gray-50 py-3" placeholder="Voer volledig adres in (bijv. Hoofdstraat 123, Amsterdam)" required>
+=======
+                        <input type="text" id="full_address" name="full_address" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500 bg-gray-50 py-3" placeholder="Voer volledig adres in (bijv. Hoofdstraat 123, Amsterdam)" required>
+>>>>>>> Stashed changes
                         <div id="address-suggestions" class="absolute z-50 w-full mt-1 bg-white rounded-md shadow-lg hidden max-h-60 overflow-y-auto border border-gray-200">
                             <!-- Suggestions will be populated here -->
                         </div>
