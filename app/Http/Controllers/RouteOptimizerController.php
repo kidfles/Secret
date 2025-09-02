@@ -82,6 +82,12 @@ class RouteOptimizerController extends Controller
     public function store(Request $request)
     {
         try {
+            // Require a selected date in session so new locations are always bound to a day
+            if (!session()->has('selected_date')) {
+                return redirect()->route('day-planner.index')
+                    ->with('error', 'Selecteer eerst een datum voordat je een locatie toevoegt.');
+            }
+
             $validated = $request->validate([
                 'name' => 'required|string|max:255',
                 'street' => 'required|string|max:255',
@@ -96,6 +102,7 @@ class RouteOptimizerController extends Controller
                 'begin_time' => 'nullable|date_format:H:i',
                 'end_time' => 'nullable|date_format:H:i|after_or_equal:begin_time',
                 'completion_minutes' => 'nullable|integer|min:0',
+                // Ignore incoming date; we will set it from the session to bind to the chosen day
                 'date' => 'nullable|date',
             ]);
 
@@ -108,10 +115,8 @@ class RouteOptimizerController extends Controller
                 $validated['end_time'] = null;
             }
             
-            // If date is not provided but selected_date is in session, use that
-            if (empty($validated['date']) && session()->has('selected_date')) {
-                $validated['date'] = session('selected_date');
-            }
+            // Always set date from session to ensure binding to the selected day
+            $validated['date'] = session('selected_date');
             
             // If tegels is empty or zero, ensure it's set to zero
             $validated['tegels'] = $validated['tegels'] ?? 0;
